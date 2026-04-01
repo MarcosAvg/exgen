@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Generador de Evidencia
+Comment=Genera reportes PDF con imágenes de evidencia
+Exec=main.py
+Icon=icon
+Terminal=false
+Categories=Office;Utility;
+Keywords=pdf;reporte;evidencia;
+StartupNotify=true
+X-AppImage-Name=GeneradorEvidencia
+GenericName=Generador de Reportes

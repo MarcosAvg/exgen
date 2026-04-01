@@ -1,0 +1,19 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+ENV/
+
+# PDF Output
+*.pdf
+
+# Config
+.config/
+/evidencia_output.pdf
+
+# Project specific
+assets/background.jpg (if you generate it)
