@@ -59,3 +59,35 @@ python main.py
 - `src/utils/`: Funciones de apoyo y gestión de configuración.
 - `src/models/`: Estructuras de datos.
 - `assets/`: Recursos gráficos (fondos, iconos).
+
+## Empaquetar como AppImage
+
+Para construir una versión portátil (ejecutable único) de la aplicación, sigue estos pasos:
+
+1.  **Descargar herramientas**:
+    ```bash
+    wget -c https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+    wget -c https://github.com/linuxdeploy/linuxdeploy-plugin-gtk/releases/download/continuous/linuxdeploy-plugin-gtk-x86_64.sh
+    wget -c https://github.com/linuxdeploy/linuxdeploy-plugin-python/releases/download/continuous/linuxdeploy-plugin-python-x86_64.sh
+    chmod +x linuxdeploy*.AppImage linuxdeploy*.sh
+    ```
+
+2.  **Preparar carpeta de construcción**:
+    ```bash
+    mkdir -p AppDir/usr/bin
+    cp main.py AppDir/usr/bin/
+    cp -r src AppDir/usr/bin/
+    cp -r assets AppDir/usr/bin/
+    ```
+
+3.  **Ejecutar Build**:
+    ```bash
+    export DEPLOY_GTK_VERSION=4
+    ./linuxdeploy-x86_64.AppImage --appdir AppDir \
+      --plugin python \
+      --plugin gtk \
+      --icon-file assets/icon.png \
+      --desktop-file com.gen.evidencia.desktop \
+      --output appimage
+    ```
+
