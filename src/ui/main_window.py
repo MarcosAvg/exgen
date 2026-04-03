@@ -3,7 +3,7 @@ import threading
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Gtk, Adw, Gio, GLib
+from gi.repository import Gtk, Adw, Gio, GLib, Pango
 from src.models.data_models import EvidenciaData
 from src.services.pdf_generator import generar_pdf
 from src.utils.config_manager import get_save_path, set_save_path, get_last_image_dir, set_last_image_dir
@@ -65,9 +65,86 @@ class MainWindow(Adw.ApplicationWindow):
         # --- Grupo 2: Concepto ---
         grp_concepto = Adw.PreferencesGroup(title="Concepto")
         self.entry_num = Adw.EntryRow(title="Número")
-        self.entry_desc = Adw.EntryRow(title="Descripción/Texto")
+        
+        # Área de Texto Multilínea Integrada (Estilo EntryRow)
+        # Área de Texto Multilínea Integrada (Estilo EntryRow con Animación)
+        self.row_desc = Adw.PreferencesRow()
+        self.row_desc.add_css_class("multiline-entry")
+        
+        # Una caja horizontal para el icono de lápiz y el texto
+        hbox_desc = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        hbox_desc.set_margin_top(8)
+        hbox_desc.set_margin_bottom(8)
+        hbox_desc.set_margin_start(12)
+        hbox_desc.set_margin_end(12)
+        
+        # Contenedor principal de los textos
+        vbox_desc = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        vbox_desc.set_hexpand(True)
+        
+        self.lbl_desc = Gtk.Label(label="Descripción/Texto", xalign=0)
+        self.lbl_desc.add_css_class("anim-label")
+        self.lbl_desc.add_css_class("float-down") # Estado por defecto (vacío)
+        
+        self.entry_desc = Gtk.TextView()
+        self.entry_desc.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        self.entry_desc.set_accepts_tab(False)
+        self.entry_desc.set_hexpand(True)
+        self.entry_desc.set_size_request(-1, 24) # Altura mínima necesaria para que actúe como input
+
+        
+        # Icono de edición simulado
+        self.icon_edit = Gtk.Image.new_from_icon_name("document-edit-symbolic")
+        self.icon_edit.set_valign(Gtk.Align.CENTER)
+        self.icon_edit.add_css_class("dim-label")
+        self.icon_edit.add_css_class("anim-icon")
+        
+        # CSS para integración perfecta, bordes y animación
+        provider = Gtk.CssProvider()
+        provider.load_from_data("""
+            textview, textview text {
+                background-color: transparent; padding: 0; margin: 0;
+            }
+            row.multiline-entry:focus-within { box-shadow: inset 0 0 0 2px @accent_color; }
+            .anim-label { transition: all 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94); opacity: 0.55; }
+            .anim-label.float-up { font-size: 9pt; transform: none; }
+            .anim-label.float-down { font-size: 11pt; transform: translateY(12px); }
+            .anim-icon { transition: opacity 200ms ease; }
+        """.encode())
+        self.entry_desc.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.row_desc.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.lbl_desc.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.icon_edit.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        
+        vbox_desc.append(self.lbl_desc)
+        vbox_desc.append(self.entry_desc)
+        
+        hbox_desc.append(vbox_desc)
+        hbox_desc.append(self.icon_edit)
+        self.row_desc.set_child(hbox_desc)
+        
+        # Lógica de animación
+        def update_label_state(*args):
+            has_text = self.entry_desc.get_buffer().get_char_count() > 0
+            is_focused = self.entry_desc.has_focus()
+            
+            if has_text or is_focused:
+                self.lbl_desc.remove_css_class("float-down")
+                self.lbl_desc.add_css_class("float-up")
+                self.icon_edit.set_opacity(0.0)
+            else:
+                self.lbl_desc.remove_css_class("float-up")
+                self.lbl_desc.add_css_class("float-down")
+                self.icon_edit.set_opacity(1.0)
+                
+        self.entry_desc.get_buffer().connect("changed", update_label_state)
+        self.entry_desc.connect("notify::has-focus", update_label_state)
+        
+        # Forzar estado inicial seguro
+        GLib.idle_add(update_label_state)
+                
         grp_concepto.add(self.entry_num)
-        grp_concepto.add(self.entry_desc)
+        grp_concepto.add(self.row_desc)
         self.left_col.append(grp_concepto)
 
         # --- Grupo 3: Carpeta de Destino ---
@@ -214,7 +291,7 @@ class MainWindow(Adw.ApplicationWindow):
             direccion=self.entry_direccion.get_text().strip(),
             municipio=self.entry_municipio.get_text().strip(),
             concepto_numero=self.entry_num.get_text().strip(),
-            concepto_texto=self.entry_desc.get_text().strip(),
+            concepto_texto=self.get_textview_text(self.entry_desc),
             img_antes=self.paths_antes,
             img_durante=self.paths_durante,
             img_despues=self.paths_despues
@@ -285,3 +362,8 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.set_default_response("ok")
         dialog.connect("response", lambda d, r: d.close())
         dialog.present()
+
+    def get_textview_text(self, textview):
+        buffer = textview.get_buffer()
+        start, end = buffer.get_bounds()
+        return buffer.get_text(start, end, True).strip()
