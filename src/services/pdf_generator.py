@@ -81,13 +81,13 @@ def generar_pdf(data: EvidenciaData, output_path: str = "evidencia_output.pdf", 
     story.append(Spacer(1, 10))
     
     # 3. Sección Imágenes Múltiples (Horizontal con título vertical)
-    max_cols = 3
-    img_max_w = 160  
-    img_max_h = 140 
+    max_cols = 5
+    total_img_w = 515 # Ancho disponible para las imágenes (540 - 25 del título)
+    img_max_h = 140   # Reducida para evitar saltos de página innecesarios
     
     temp_files = []
     
-    def prep_img(path):
+    def prep_img(path, custom_max_w=None):
         nonlocal current_img_count
         if not path or not os.path.exists(path):
             return Paragraph("Falta", normal_style)
@@ -96,68 +96,87 @@ def generar_pdf(data: EvidenciaData, output_path: str = "evidencia_output.pdf", 
             filename = os.path.basename(path)
             report_progress(f"Procesando {filename}...")
             
-            processed_path, w_fit, h_fit = process_image_for_pdf(path, img_max_w, img_max_h)
+            target_w = custom_max_w if custom_max_w else 103 # Default 5 cols
+            processed_path, w_fit, h_fit = process_image_for_pdf(path, target_w, img_max_h)
             if processed_path != path:
                 temp_files.append(processed_path)
             return RLImage(processed_path, width=w_fit, height=h_fit)
         except Exception:
             return Paragraph("Error", normal_style)
 
-    def build_category_table(title, path_list):
+    def build_category_block(title, path_list):
         if not path_list:
-            return []
+            return None
             
-        header_text = f"<para align=center fontSize=8><b>{'<br/>'.join(list(title))}</b></para>"
         chunks = [path_list[i:i+max_cols] for i in range(0, len(path_list), max_cols)]
         
-        cat_rows = []
-        for row_idx, chunk in enumerate(chunks):
-            row_data = []
-            if row_idx == 0:
-                row_data.append(Paragraph(header_text, normal_style))
-            else:
-                row_data.append("") 
-                
-            for img_path in chunk:
-                row_data.append(prep_img(img_path))
-                
-            while len(row_data) < max_cols + 1:
-                row_data.append("")
-                
-            cat_rows.append(row_data)
+        # Generar las filas de imágenes como tablas independientes ("Flexbox")
+        row_tables = []
+        for chunk in chunks:
+            n = len(chunk)
+            cell_w = total_img_w / n
+            # Aumentamos el margen de seguridad a 8pts para evitar desbordamiento
+            row_data = [prep_img(p, custom_max_w=cell_w-8) for p in chunk]
             
-        return cat_rows
+            # Tabla de una sola fila para este bloque de imágenes
+            row_t = Table([row_data], colWidths=[cell_w] * n)
+            row_t_style = [
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                ('LEFTPADDING', (0,0), (-1,-1), 2),
+                ('RIGHTPADDING', (0,0), (-1,-1), 2),
+                ('TOPPADDING', (0,0), (-1,-1), 2),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+            ]
+            # Solo añadir separadores verticales si hay más de una imagen
+            if n > 1:
+                row_t_style.append(('GRID', (0,0), (-1,-1), 0.5, colors.grey))
+            
+            row_t.setStyle(TableStyle(row_t_style))
+            row_tables.append([row_t])
+            
+        # Tabla contenedora para la categoría (Título + Filas)
+        header_text = f"<para align=center fontSize=8><b>{'<br/>'.join(list(title))}</b></para>"
+        
+        # El contenedor interno que apila las filas
+        inner_content = Table(row_tables, colWidths=[total_img_w])
+        inner_content.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey), # Separadores entre filas
+            ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ('RIGHTPADDING', (0,0), (-1,-1), 0),
+            ('TOPPADDING', (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+        ]))
 
-    all_img_rows = []
-    antes_rows = build_category_table("ANTES", data.img_antes)
-    durante_rows = build_category_table("DURANTE", data.img_durante)
-    despues_rows = build_category_table("DESPUÉS", data.img_despues)
-    
-    all_img_rows.extend(antes_rows)
-    all_img_rows.extend(durante_rows)
-    all_img_rows.extend(despues_rows)
-    
-    if all_img_rows:
-        img_styles = [
+        cat_outer_table = Table([
+            [Paragraph(header_text, normal_style), inner_content]
+        ], colWidths=[25, total_img_w])
+        
+        cat_outer_table.setStyle(TableStyle([
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('GRID', (0,0), (-1,-1), 1, colors.black),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-            ('TOPPADDING', (0,0), (-1,-1), 2),
-            ('LEFTPADDING', (0,0), (0,-1), 2),
-            ('RIGHTPADDING', (0,0), (0,-1), 2),
-        ]
+            ('GRID', (0,0), (-1,-1), 1, colors.black), # El borde exterior principal
+            ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ('RIGHTPADDING', (0,0), (-1,-1), 0),
+            ('TOPPADDING', (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+        ]))
         
-        current_idx = 0
-        for cat_rows_set in [antes_rows, durante_rows, despues_rows]:
-            n_rows = len(cat_rows_set)
-            if n_rows > 1:
-                img_styles.append(('SPAN', (0, current_idx), (0, current_idx + n_rows - 1)))
-            current_idx += n_rows
-            
-        t_imgs = Table(all_img_rows, colWidths=[30, 170, 170, 170])
-        t_imgs.setStyle(TableStyle(img_styles))
-        story.append(t_imgs)
+        return cat_outer_table
+
+    # Ensamblar categorías
+    if data.img_antes:
+        story.append(build_category_block("ANTES", data.img_antes))
+        story.append(Spacer(1, 5))
+        
+    if data.img_durante:
+        story.append(build_category_block("DURANTE", data.img_durante))
+        story.append(Spacer(1, 5))
+        
+    if data.img_despues:
+        story.append(build_category_block("DESPUÉS", data.img_despues))
+        story.append(Spacer(1, 5))
         
     if progress_callback:
         progress_callback(0.95, "Construyendo documento final...")

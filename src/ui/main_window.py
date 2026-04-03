@@ -6,7 +6,7 @@ gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw, Gio, GLib
 from src.models.data_models import EvidenciaData
 from src.services.pdf_generator import generar_pdf
-from src.utils.config_manager import get_save_path, set_save_path
+from src.utils.config_manager import get_save_path, set_save_path, get_last_image_dir, set_last_image_dir
 
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
@@ -154,6 +154,11 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.set_filters(filters)
         dialog.set_default_filter(f)
         
+        # Iniciar en la última carpeta usada
+        last_dir = get_last_image_dir()
+        if os.path.exists(last_dir):
+            dialog.set_initial_folder(Gio.File.new_for_path(last_dir))
+        
         dialog.open_multiple(self, None, self.on_file_dialog_response, context)
 
     def on_file_dialog_response(self, dialog, result, context):
@@ -179,6 +184,10 @@ class MainWindow(Adw.ApplicationWindow):
                 elif context == "despues":
                     self.paths_despues = paths
                     self.row_despues.set_subtitle(subtitle)
+                
+                # Guardar la ruta de la carpeta para la próxima vez
+                if paths:
+                    set_last_image_dir(os.path.dirname(paths[0]))
         except GLib.Error as e:
             pass
 
@@ -213,15 +222,13 @@ class MainWindow(Adw.ApplicationWindow):
 
         missing = []
         if not data.plantel: missing.append("Plantel")
-        if not data.img_antes or not data.img_durante or not data.img_despues:
-            missing.append("Al menos 1 imagen en Antes, Durante y Después")
 
         if missing:
-            self.show_alert("Faltan datos", f"Por favor completa al menos las imágenes y el Plantel.")
+            self.show_alert("Faltan datos", f"Por favor completa al menos el campo Plantel.")
             return
 
         # Construir nombre de archivo personalizado
-        filename = f"{data.plantel} - {data.concepto_numero}.pdf"
+        filename = f"{data.concepto_numero} - {data.plantel}.pdf"
         invalid_chars = r'<>:"/\|?*'
         for char in invalid_chars:
             filename = filename.replace(char, "_")
