@@ -3,131 +3,304 @@ import threading
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Gtk, Adw, Gio, GLib, Pango
+gi.require_version('Gdk', '4.0')
+from gi.repository import Gtk, Adw, Gio, GLib, Pango, Gdk, GObject
 from src.models.data_models import EvidenciaData
 from src.services.pdf_generator import generar_pdf
 from src.utils.config_manager import get_save_path, set_save_path, get_last_image_dir, set_last_image_dir
+
+class DropZoneCard(Gtk.Box):
+    def __init__(self, title, context, main_window):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.context = context
+        self.main_window = main_window
+        self.add_css_class("dz-card")
+        self.set_hexpand(True)
+        self.set_vexpand(True)
+        
+        # Título de la tarjeta (Ej. ANTES)
+        lbl_title = Gtk.Label(label=title)
+        lbl_title.add_css_class("heading")
+        lbl_title.add_css_class("dim-label")
+        self.append(lbl_title)
+        
+        # Contenedor dinámico (Muestra el placeholder o la imagen real)
+        self.content_bin = Adw.Bin()
+        self.content_bin.set_vexpand(True)
+        self.content_bin.set_hexpand(True)
+        self.append(self.content_bin)
+        
+        # Vaciado / Estado Inicial
+        self.placeholder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.placeholder.set_valign(Gtk.Align.CENTER)
+        
+        icon = Gtk.Image.new_from_icon_name("insert-image-symbolic")
+        icon.set_pixel_size(32) # Icono más pequeño
+        icon.add_css_class("dim-label")
+        self.placeholder.append(icon)
+        
+        self.lbl_subtitle = Gtk.Label(label="Arrastra o Clica aquí")
+        self.lbl_subtitle.add_css_class("dim-label")
+        self.lbl_subtitle.add_css_class("caption")
+        self.placeholder.append(self.lbl_subtitle)
+        
+        self.content_bin.set_child(self.placeholder)
+        
+        # Clics para abrir selector nativo
+        click = Gtk.GestureClick()
+        click.connect("pressed", lambda *args: self.main_window.on_select_image(None, self.context))
+        self.add_controller(click)
+        
+        # Receptor de Arrastrar y Soltar (DND)
+        try:
+            drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
+            drop.connect("drop", self.main_window.on_drop_image, self.context)
+            drop.connect("enter", lambda t, x, y: self.add_css_class("drag-hover") or Gdk.DragAction.COPY)
+            drop.connect("leave", lambda t: self.remove_css_class("drag-hover"))
+            self.add_controller(drop)
+        except Exception:
+            pass
+
+    def update_preview(self, paths):
+        if not paths:
+            self.content_bin.set_child(self.placeholder)
+            return
+
+        # Previsualización nativa de GTK4
+        try:
+            pic = Gtk.Picture.new_for_filename(paths[0])
+            pic.set_can_shrink(True)
+            if hasattr(pic, "set_content_fit"): # GTK 4.8+
+                pic.set_content_fit(Gtk.ContentFit.COVER)
+            elif hasattr(pic, "set_keep_aspect_ratio"):
+                pic.set_keep_aspect_ratio(True)
+                
+            # Marco para redondear las esquinas de la imagen si se desea
+            frame = Gtk.Frame()
+            frame.add_css_class("preview-frame")
+            frame.set_child(pic)
+
+            # Capa superior para añadir "Badges" si hay más de 1 imagen
+            overlay = Gtk.Overlay()
+            overlay.set_child(frame)
+            
+            if len(paths) > 1:
+                badge = Gtk.Label(label=f"+{len(paths)-1}")
+                badge.add_css_class("numeric-badge")
+                badge.set_valign(Gtk.Align.START)
+                badge.set_halign(Gtk.Align.END)
+                badge.set_margin_top(8)
+                badge.set_margin_end(8)
+                overlay.add_overlay(badge)
+                
+            self.content_bin.set_child(overlay)
+        except Exception as e:
+            # Si la imagen falla en cargar (corrupta), mantenemos placeholder y cambiamos texto
+            self.lbl_subtitle.set_text(f"{len(paths)} Seleccionadas")
+            self.content_bin.set_child(self.placeholder)
 
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.set_title("Generador de Evidencia")
-        self.set_default_size(1000, 560)
+        self.set_default_size(800, 950)
 
-        # Main Layout
-        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        # 1. Overlay (Toasts)
+        self.toast_overlay = Adw.ToastOverlay()
+        self.set_content(self.toast_overlay)
+
+        # 2. ToolbarView
+        self.toolbar_view = Adw.ToolbarView()
+        self.toast_overlay.set_child(self.toolbar_view)
         
-        # HeaderBar
         header = Adw.HeaderBar()
-        main_box.append(header)
+        self.toolbar_view.add_top_bar(header)
 
-        # ScrolledWindow para contenido largo
+        # 3.1 Barra inferior para la acción principal (Al centro)
+        bottom_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        bottom_bar.set_margin_top(12)
+        bottom_bar.set_margin_bottom(12)
+        bottom_bar.set_margin_start(12)
+        bottom_bar.set_margin_end(12)
+        
+        # Espaciador Izquierda
+        bottom_bar.append(Gtk.Box(hexpand=True))
+
+        self.btn_gen = Gtk.Button(label="Generar PDF")
+        self.btn_gen.add_css_class("suggested-action")
+        self.btn_gen.add_css_class("pill")
+        self.btn_gen.set_size_request(180, 44) 
+        self.btn_gen.connect("clicked", self.on_generate_pdf)
+        bottom_bar.append(self.btn_gen)
+        
+        # Espaciador Derecha
+        bottom_bar.append(Gtk.Box(hexpand=True))
+        
+        self.toolbar_view.add_bottom_bar(bottom_bar)
+        
+        # 3.2 Botón Ajustes (En la cabecera)
+        btn_settings = Gtk.MenuButton(icon_name="document-properties-symbolic")
+        popover_settings = Gtk.Popover()
+        
+        grp_destino = Adw.PreferencesGroup(title="Ajustes")
+        grp_destino.set_margin_top(8)
+        grp_destino.set_margin_bottom(8)
+        grp_destino.set_margin_start(8)
+        grp_destino.set_margin_end(8)
+        
+        self.save_path = get_save_path()
+        self.row_destino = Adw.ActionRow(title="Guardar en...", subtitle=self.save_path)
+        btn_folder = Gtk.Button(icon_name="folder-open-symbolic", valign=Gtk.Align.CENTER)
+        btn_folder.connect("clicked", self.on_select_folder)
+        self.row_destino.add_suffix(btn_folder)
+        grp_destino.add(self.row_destino)
+        
+        popover_settings.set_child(grp_destino)
+        btn_settings.set_popover(popover_settings)
+        header.pack_end(btn_settings)
+
+        # 4. Scroll & Contenedor Único Central (Dashboard Style)
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_vexpand(True)
-        main_box.append(scrolled)
+        self.toolbar_view.set_content(scrolled)
         
-        # Adw.Clamp para mantener márgenes pero permitiendo expansión
         self.main_clamp = Adw.Clamp()
-        self.main_clamp.set_margin_top(24)
-        self.main_clamp.set_margin_bottom(24)
+        self.main_clamp.set_margin_top(32)
+        self.main_clamp.set_margin_bottom(48)
         self.main_clamp.set_margin_start(24)
         self.main_clamp.set_margin_end(24)
-        self.main_clamp.set_maximum_size(600) # Tamaño inicial móvil
-        self.main_clamp.set_tightening_threshold(400)
+        self.main_clamp.set_maximum_size(960) # Excelente para Widescreen
         scrolled.set_child(self.main_clamp)
 
-        # Contenedor principal de secciones
-        self.content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=32)
+        # Contenedor Flujo Vertical
+        self.content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24) # Reducido de 42
         self.main_clamp.set_child(self.content_box)
 
-        # SECCIÓN IZQUIERDA: Formularios
-        self.left_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
-        self.left_col.set_hexpand(True)
-        self.content_box.append(self.left_col)
-
-        # SECCIÓN DERECHA: Imágenes y Acción
-        self.right_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
-        self.right_col.set_hexpand(True)
-        self.content_box.append(self.right_col)
-
-        # --- Grupo 1: Datos Generales ---
-        grp_datos = Adw.PreferencesGroup(title="Datos Generales")
+        # --- SECCIÓN 1: Detalles (Datos + Concepto unificados) ---
+        grp_detalles = Adw.PreferencesGroup(title="Detalles de Inspección")
         self.entry_plantel = Adw.EntryRow(title="Plantel")
         self.entry_cct = Adw.EntryRow(title="CCT")
         self.entry_direccion = Adw.EntryRow(title="Dirección")
         self.entry_municipio = Adw.EntryRow(title="Municipio")
-        grp_datos.add(self.entry_plantel)
-        grp_datos.add(self.entry_cct)
-        grp_datos.add(self.entry_direccion)
-        grp_datos.add(self.entry_municipio)
-        self.left_col.append(grp_datos)
-
-        # --- Grupo 2: Concepto ---
-        grp_concepto = Adw.PreferencesGroup(title="Concepto")
         self.entry_num = Adw.EntryRow(title="Número")
         
-        # Área de Texto Multilínea Integrada (Estilo EntryRow)
-        # Área de Texto Multilínea Integrada (Estilo EntryRow con Animación)
         self.row_desc = Adw.PreferencesRow()
         self.row_desc.add_css_class("multiline-entry")
         
-        # Una caja horizontal para el icono de lápiz y el texto
         hbox_desc = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         hbox_desc.set_margin_top(8)
         hbox_desc.set_margin_bottom(8)
         hbox_desc.set_margin_start(12)
         hbox_desc.set_margin_end(12)
         
-        # Contenedor principal de los textos
         vbox_desc = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         vbox_desc.set_hexpand(True)
         
-        self.lbl_desc = Gtk.Label(label="Descripción/Texto", xalign=0)
+        self.lbl_desc = Gtk.Label(label="Descripción del Concepto", xalign=0)
         self.lbl_desc.add_css_class("anim-label")
-        self.lbl_desc.add_css_class("float-down") # Estado por defecto (vacío)
+        self.lbl_desc.add_css_class("float-down")
         
         self.entry_desc = Gtk.TextView()
         self.entry_desc.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         self.entry_desc.set_accepts_tab(False)
         self.entry_desc.set_hexpand(True)
-        self.entry_desc.set_size_request(-1, 24) # Altura mínima necesaria para que actúe como input
-
+        self.entry_desc.set_size_request(-1, 24)
         
-        # Icono de edición simulado
         self.icon_edit = Gtk.Image.new_from_icon_name("document-edit-symbolic")
         self.icon_edit.set_valign(Gtk.Align.CENTER)
         self.icon_edit.add_css_class("dim-label")
         self.icon_edit.add_css_class("anim-icon")
         
-        # CSS para integración perfecta, bordes y animación
+        vbox_desc.append(self.lbl_desc)
+        vbox_desc.append(self.entry_desc)
+        hbox_desc.append(vbox_desc)
+        hbox_desc.append(self.icon_edit)
+        self.row_desc.set_child(hbox_desc)
+        
+        grp_detalles.add(self.entry_plantel)
+        grp_detalles.add(self.entry_cct)
+        grp_detalles.add(self.entry_direccion)
+        grp_detalles.add(self.entry_municipio)
+        grp_detalles.add(self.entry_num)
+        grp_detalles.add(self.row_desc)
+        self.content_box.append(grp_detalles)
+
+        # --- SECCIÓN 2: Galería Panorámica de Fotos (Drop Zones Horizontales) ---
+        box_galeria = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        
+        lbl_imgs = Gtk.Label(label="Fotografías (Visuales)", xalign=0)
+        lbl_imgs.add_css_class("heading")
+        box_galeria.append(lbl_imgs)
+        
+        self.imgs_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=24)
+        self.imgs_box.set_homogeneous(True) # ¡Hace que las 3 pesen lo mismo!
+        
+        self.dz_antes = DropZoneCard("ANTES", "antes", self)
+        self.dz_durante = DropZoneCard("DURANTE", "durante", self)
+        self.dz_despues = DropZoneCard("DESPUÉS", "despues", self)
+        
+        self.imgs_box.append(self.dz_antes)
+        self.imgs_box.append(self.dz_durante)
+        self.imgs_box.append(self.dz_despues)
+        box_galeria.append(self.imgs_box)
+        
+        self.content_box.append(box_galeria)
+
+        # ESTILOS CSS INYECTADOS
         provider = Gtk.CssProvider()
         provider.load_from_data("""
-            textview, textview text {
-                background-color: transparent; padding: 0; margin: 0;
-            }
+            textview, textview text { background-color: transparent; padding: 0; margin: 0; }
             row.multiline-entry:focus-within { box-shadow: inset 0 0 0 2px @accent_color; }
             .anim-label { transition: all 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94); opacity: 0.55; }
             .anim-label.float-up { font-size: 9pt; transform: none; }
             .anim-label.float-down { font-size: 11pt; transform: translateY(12px); }
             .anim-icon { transition: opacity 200ms ease; }
+            
+            /* Tarjeta Drop Zone */
+            .dz-card {
+                background-color: @window_bg_color;
+                border: 2px dashed @shade_color;
+                border-radius: 12px;
+                padding: 12px;
+                transition: all 200ms ease;
+                min-height: 160px;
+            }
+            .dz-card:hover {
+                border-color: @accent_color;
+                background-color: alpha(@accent_color, 0.05);
+            }
+            .dz-card.drag-hover {
+                border-style: solid;
+                border-color: @accent_color;
+                background-color: alpha(@accent_color, 0.15);
+            }
+            .preview-frame {
+                border-radius: 8px;
+                border: 1px solid @shade_color;
+            }
+            .numeric-badge {
+                background-color: @accent_bg_color;
+                color: @accent_fg_color;
+                border-radius: 99px;
+                padding: 4px 10px;
+                font-weight: bold;
+                font-size: 10pt;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            }
         """.encode())
         self.entry_desc.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.row_desc.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.lbl_desc.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.icon_edit.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         
-        vbox_desc.append(self.lbl_desc)
-        vbox_desc.append(self.entry_desc)
+        Gtk.StyleContext.add_provider_for_display(
+             Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        ) # Hacemos los estilos del DragAndDrop globales
         
-        hbox_desc.append(vbox_desc)
-        hbox_desc.append(self.icon_edit)
-        self.row_desc.set_child(hbox_desc)
-        
-        # Lógica de animación
+        # Animación label
         def update_label_state(*args):
             has_text = self.entry_desc.get_buffer().get_char_count() > 0
             is_focused = self.entry_desc.has_focus()
-            
             if has_text or is_focused:
                 self.lbl_desc.remove_css_class("float-down")
                 self.lbl_desc.add_css_class("float-up")
@@ -139,99 +312,41 @@ class MainWindow(Adw.ApplicationWindow):
                 
         self.entry_desc.get_buffer().connect("changed", update_label_state)
         self.entry_desc.connect("notify::has-focus", update_label_state)
-        
-        # Forzar estado inicial seguro
         GLib.idle_add(update_label_state)
-                
-        grp_concepto.add(self.entry_num)
-        grp_concepto.add(self.row_desc)
-        self.left_col.append(grp_concepto)
 
-        # --- Grupo 3: Carpeta de Destino ---
-        grp_destino = Adw.PreferencesGroup(title="Carpeta de Destino")
-        self.save_path = get_save_path()
-        self.row_destino = Adw.ActionRow(title="Directorio de Guardado", subtitle=self.save_path)
-        btn_folder = Gtk.Button(icon_name="folder-open-symbolic")
-        btn_folder.set_valign(Gtk.Align.CENTER)
-        btn_folder.connect("clicked", self.on_select_folder)
-        self.row_destino.add_suffix(btn_folder)
-        grp_destino.add(self.row_destino)
-        self.right_col.append(grp_destino)
-
-        # --- Grupo 4: Imágenes ---
-        grp_imgs = Adw.PreferencesGroup(title="Imágenes")
+        # Estado de rutas
         self.paths_antes = []
         self.paths_durante = []
         self.paths_despues = []
 
-        self.row_antes = Adw.ActionRow(title="ANTES", subtitle="Ninguna seleccionada")
-        btn_antes = Gtk.Button(label="Seleccionar")
-        btn_antes.set_valign(Gtk.Align.CENTER)
-        btn_antes.connect("clicked", self.on_select_image, "antes")
-        self.row_antes.add_suffix(btn_antes)
-        grp_imgs.add(self.row_antes)
-
-        self.row_durante = Adw.ActionRow(title="DURANTE", subtitle="Ninguna seleccionada")
-        btn_durante = Gtk.Button(label="Seleccionar")
-        btn_durante.set_valign(Gtk.Align.CENTER)
-        btn_durante.connect("clicked", self.on_select_image, "durante")
-        self.row_durante.add_suffix(btn_durante)
-        grp_imgs.add(self.row_durante)
-
-        self.row_despues = Adw.ActionRow(title="DESPUÉS", subtitle="Ninguna seleccionada")
-        btn_despues = Gtk.Button(label="Seleccionar")
-        btn_despues.set_valign(Gtk.Align.CENTER)
-        btn_despues.connect("clicked", self.on_select_image, "despues")
-        self.row_despues.add_suffix(btn_despues)
-        grp_imgs.add(self.row_despues)
-        self.right_col.append(grp_imgs)
-
-        # --- Acción de Generación ---
-        self.btn_gen = Gtk.Button(label="Generar PDF")
-        self.btn_gen.set_margin_top(12)
-        self.btn_gen.add_css_class("suggested-action")
-        self.btn_gen.add_css_class("pill")
-        self.btn_gen.set_size_request(-1, 50)
-        self.btn_gen.connect("clicked", self.on_generate_pdf)
-        self.right_col.append(self.btn_gen)
-
-        self.progress_bar = Gtk.ProgressBar()
-        self.progress_bar.set_visible(False)
-        self.right_col.append(self.progress_bar)
-
-        self.progress_label = Gtk.Label(label="")
-        self.progress_label.set_visible(False)
-        self.progress_label.add_css_class("caption")
-        self.right_col.append(self.progress_label)
-
-        # --- BREAKPOINT RESPONSIVO ---
-        # Si el ancho de la ventana es superior a 900px, activar modo Desktop
+    def on_drop_image(self, target, value, x, y, context):
         try:
-            self.breakpoint = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("min-width: 900px"))
-            self.breakpoint.add_setter(self.content_box, "orientation", Gtk.Orientation.HORIZONTAL)
-            self.breakpoint.add_setter(self.main_clamp, "maximum-size", 10000) # Expandir totalmente
-            self.add_breakpoint(self.breakpoint)
-        except (AttributeError, TypeError):
-            # Compatibilidad con versiones de libadwaita menores a 1.4
-            pass
-            
-        self.set_content(main_box)
+            target.get_widget().remove_css_class("drag-hover")
+            paths = []
+            if type(value).__name__ == "FileList":
+                files = value.get_files()
+                for i in range(files.get_n_items()):
+                    f = files.get_item(i)
+                    paths.append(f.get_path())
+            valid_paths = [p for p in paths if p.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            if valid_paths:
+                self.update_image_state(valid_paths, context)
+            return True
+        except Exception:
+            return False
 
     def on_select_image(self, btn, context):
         dialog = Gtk.FileDialog()
         dialog.set_title("Selecciona la imagen de evidencia")
-        
         f = Gtk.FileFilter()
         f.set_name("Imágenes")
         f.add_mime_type("image/png")
         f.add_mime_type("image/jpeg")
-        
         filters = Gio.ListStore.new(Gtk.FileFilter)
         filters.append(f)
         dialog.set_filters(filters)
         dialog.set_default_filter(f)
         
-        # Iniciar en la última carpeta usada
         last_dir = get_last_image_dir()
         if os.path.exists(last_dir):
             dialog.set_initial_folder(Gio.File.new_for_path(last_dir))
@@ -246,27 +361,22 @@ class MainWindow(Adw.ApplicationWindow):
                 for i in range(list_model.get_n_items()):
                     f = list_model.get_item(i)
                     paths.append(f.get_path())
-                
                 if not paths: return
-                
-                count = len(paths)
-                subtitle = f"{count} imagen seleccionada" if count == 1 else f"{count} imágenes seleccionadas"
-
-                if context == "antes":
-                    self.paths_antes = paths
-                    self.row_antes.set_subtitle(subtitle)
-                elif context == "durante":
-                    self.paths_durante = paths
-                    self.row_durante.set_subtitle(subtitle)
-                elif context == "despues":
-                    self.paths_despues = paths
-                    self.row_despues.set_subtitle(subtitle)
-                
-                # Guardar la ruta de la carpeta para la próxima vez
-                if paths:
-                    set_last_image_dir(os.path.dirname(paths[0]))
-        except GLib.Error as e:
+                self.update_image_state(paths, context)
+                set_last_image_dir(os.path.dirname(paths[0]))
+        except GLib.Error:
             pass
+
+    def update_image_state(self, paths, context):
+        if context == "antes":
+            self.paths_antes = paths
+            self.dz_antes.update_preview(paths)
+        elif context == "durante":
+            self.paths_durante = paths
+            self.dz_durante.update_preview(paths)
+        elif context == "despues":
+            self.paths_despues = paths
+            self.dz_despues.update_preview(paths)
 
     def on_select_folder(self, btn):
         dialog = Gtk.FileDialog()
@@ -299,12 +409,12 @@ class MainWindow(Adw.ApplicationWindow):
 
         missing = []
         if not data.plantel: missing.append("Plantel")
-
+        # Validar si al menos hay una foto (opcional, pero útil)
+        
         if missing:
-            self.show_alert("Faltan datos", f"Por favor completa al menos el campo Plantel.")
+            self.show_alert("Faltan datos obligatorios", "Por favor completa al menos el campo Plantel.")
             return
 
-        # Construir nombre de archivo personalizado
         filename = f"{data.concepto_numero} - {data.plantel}.pdf"
         invalid_chars = r'<>:"/\|?*'
         for char in invalid_chars:
@@ -312,52 +422,40 @@ class MainWindow(Adw.ApplicationWindow):
             
         full_path = os.path.join(self.save_path, filename)
 
-        # Preparar UI para carga
         self.btn_gen.set_sensitive(False)
-        self.progress_bar.set_visible(True)
-        self.progress_bar.set_fraction(0.0)
-        self.progress_label.set_visible(True)
-        self.progress_label.set_text("Iniciando...")
+        
+        self.toast_gen = Adw.Toast.new("Generando PDF...")
+        self.toast_gen.set_timeout(0)
+        self.toast_overlay.add_toast(self.toast_gen)
 
-        # Lanzar hilo
         thread = threading.Thread(target=self.generate_pdf_worker, args=(data, full_path))
         thread.daemon = True
         thread.start()
 
     def generate_pdf_worker(self, data, filename):
         try:
-            out_path = generar_pdf(data, output_path=filename, progress_callback=self.report_progress_from_thread)
+            out_path = generar_pdf(data, output_path=filename)
             GLib.idle_add(self.on_pdf_success, out_path)
         except Exception as e:
             GLib.idle_add(self.on_pdf_error, str(e))
 
-    def report_progress_from_thread(self, fraction, text):
-        GLib.idle_add(self.update_progress_ui, fraction, text)
-
-    def update_progress_ui(self, fraction, text):
-        self.progress_bar.set_fraction(fraction)
-        self.progress_label.set_text(text)
-
     def on_pdf_success(self, out_path):
-        self.reset_progress_ui()
-        self.show_alert("Éxito", f"PDF generado correctamente en:\n{out_path}")
+        self.btn_gen.set_sensitive(True)
+        if hasattr(self, 'toast_gen'):
+            self.toast_gen.dismiss()
+            
+        nice_name = os.path.basename(out_path)
+        success_toast = Adw.Toast.new(f"Reporte Completado: {nice_name}")
+        self.toast_overlay.add_toast(success_toast)
 
     def on_pdf_error(self, error_msg):
-        self.reset_progress_ui()
+        self.btn_gen.set_sensitive(True)
+        if hasattr(self, 'toast_gen'):
+            self.toast_gen.dismiss()
         self.show_alert("Error", f"Ocurrió un error al generar PDF: {error_msg}")
 
-    def reset_progress_ui(self):
-        self.btn_gen.set_sensitive(True)
-        self.progress_bar.set_visible(False)
-        self.progress_label.set_visible(False)
-        self.progress_label.set_text("")
-
     def show_alert(self, title, message):
-        dialog = Adw.MessageDialog(
-            heading=title,
-            body=message,
-            transient_for=self,
-        )
+        dialog = Adw.MessageDialog(heading=title, body=message, transient_for=self)
         dialog.add_response("ok", "Aceptar")
         dialog.set_default_response("ok")
         dialog.connect("response", lambda d, r: d.close())
