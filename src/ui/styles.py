@@ -13,34 +13,48 @@ MAIN_WINDOW_CSS = """
     .anim-icon { transition: opacity 200ms ease; }
 
     .dz-card {
-        background-color: @window_bg_color;
+        background-color: alpha(@window_bg_color, 0.4);
         border: 2px dashed @shade_color;
-        border-radius: 12px;
-        padding: 12px;
-        transition: all 200ms ease;
-        min-height: 160px;
+        border-radius: 16px;
+        padding: 16px;
+        transition: all 250ms ease-out;
+        min-height: 180px;
     }
     .dz-card:hover {
         border-color: @accent_color;
-        background-color: alpha(@accent_color, 0.05);
+        background-color: alpha(@accent_color, 0.08);
+        transform: translateY(-2px);
     }
     .dz-card.drag-hover {
         border-style: solid;
         border-color: @accent_color;
-        background-color: alpha(@accent_color, 0.15);
+        background-color: alpha(@accent_color, 0.12);
+        box-shadow: 0 0 0 4px alpha(@accent_color, 0.1);
     }
     .preview-frame {
-        border-radius: 8px;
+        border-radius: 12px;
         border: 1px solid @shade_color;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
     .numeric-badge {
         background-color: @accent_bg_color;
         color: @accent_fg_color;
-        border-radius: 99px;
-        padding: 4px 10px;
-        font-weight: bold;
-        font-size: 10pt;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        border-radius: 8px;
+        padding: 4px 8px;
+        font-weight: 800;
+        font-size: 9pt;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        border: 1px solid alpha(white, 0.1);
+    }
+    
+    /* Pulido para HeaderBar y Switcher */
+    headerbar {
+        border-bottom: 1px solid @shade_color;
+    }
+    
+    .floating-progress {
+        margin: 0;
+        border-radius: 0;
     }
 """
 

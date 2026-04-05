@@ -27,10 +27,16 @@ def list_evidence_backend_ids() -> tuple[str, ...]:
 
 def _register_builtin_backends() -> None:
     from src.services.pdf.reportlab_generator import ReportlabLetterEvidenciaGenerator
+    from src.services.pdf.evidence_images_generator import EvidenceImagesOnlyGenerator
 
     register_evidence_backend(
         DEFAULT_EVIDENCE_BACKEND_ID,
         lambda: ReportlabLetterEvidenciaGenerator(),
+    )
+
+    register_evidence_backend(
+        "images_only",
+        lambda: EvidenceImagesOnlyGenerator(),
     )
 
 

@@ -1,5 +1,6 @@
 import os
 import json
+from src.domain.catalog_models import CatalogSystem
 
 CONFIG_DIR = os.path.expanduser("~/.config/evidencia_app")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
@@ -45,4 +46,35 @@ def get_last_image_dir():
 def set_last_image_dir(path):
     config = _load_config()
     config["last_image_dir"] = path
+    _save_config(config)
+
+
+def get_catalog_system() -> CatalogSystem:
+    """Carga el sistema de catálogos desde configuración."""
+    config = _load_config()
+    catalog_data = config.get("catalog_system", {})
+    if catalog_data:
+        return CatalogSystem.from_dict(catalog_data)
+    return CatalogSystem()
+
+
+def set_catalog_system(system: CatalogSystem) -> None:
+    """Guarda el sistema de catálogos en configuración."""
+    config = _load_config()
+    config["catalog_system"] = system.to_dict()
+    _save_config(config)
+
+
+def get_last_evidence_image_dir():
+    """Directorio de imágenes para la pestaña Evidencias."""
+    config = _load_config()
+    path = config.get("last_evidence_image_dir")
+    if path and os.path.isdir(path):
+        return path
+    return os.path.expanduser("~")
+
+
+def set_last_evidence_image_dir(path):
+    config = _load_config()
+    config["last_evidence_image_dir"] = path
     _save_config(config)

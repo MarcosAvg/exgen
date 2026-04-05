@@ -28,9 +28,9 @@ class ReportlabLetterEvidenciaGenerator:
         doc = SimpleDocTemplate(
             output_path,
             pagesize=letter,
-            rightMargin=36,
-            leftMargin=36,
-            topMargin=height * 0.12,
+            rightMargin=30,  # Suficiente para 540pt de contenido + buffer ReportLab
+            leftMargin=30,
+            topMargin=height * 0.12, # Restaurado margen superior original de Reporte
             bottomMargin=36,
         )
         if progress_callback:

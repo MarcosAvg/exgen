@@ -14,7 +14,7 @@ def build_image_flowables(
     progress_callback: ProgressCallback,
 ):
     max_cols = 5
-    total_img_w = 515
+    total_img_w = 515 # Restaurado para coincidir con el diseño original de Reporte
     img_max_h = 140
     temp_files: list[str] = []
     current_img_count = 0
