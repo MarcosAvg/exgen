@@ -80,7 +80,7 @@ O bien: usa **solo** `pip install --user -r requirements.txt` con el `python3` d
 Si existe `assets/background.jpg`, se usa como fondo de página. Puedes generar un placeholder:
 
 ```bash
-python3 generate_bg.py
+python3 scripts/generate_bg.py
 ```
 
 La carpeta `assets/` está en el repo; el JPEG puedes ignorarlo en git si lo indicas en `.gitignore`.
@@ -107,12 +107,13 @@ python3 main.py
 | Ruta                | Contenido                                           |
 | ------------------- | --------------------------------------------------- |
 | `main.py`           | Entrada de la aplicación                            |
+| `scripts/`          | Utilidades (p. ej. generar `assets/background.jpg`) |
 | `src/domain/`       | Modelo, validación, nombres de archivo              |
 | `src/application/`  | Caso de uso de generación del informe               |
 | `src/services/pdf/` | Protocolo, registro y backend ReportLab             |
 | `src/ui/`           | Ventana, estilos, widgets                           |
 | `src/utils/`        | Config, rutas a `assets/`, imagen para PDF          |
-| `packaging/`        | `make-tarball.sh`, `pip-vendor.txt`, `make_icon.py` |
+| `packaging/`        | Tarball, Flatpak (`flatpak/`), `make_icon.py`, etc.   |
 
 ## Empaquetado para distribuir (Linux)
 
