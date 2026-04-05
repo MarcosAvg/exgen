@@ -15,5 +15,6 @@ ENV/
 .config/
 /evidencia_output.pdf
 
-# Project specific
-assets/background.jpg (if you generate it)
+# Empaquetado
+dist/
+packaging/.cache/

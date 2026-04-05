@@ -1,0 +1,3 @@
+# Dependencias que se copian al tarball (vendor/). PyGObject/GTK deben venir del sistema.
+reportlab>=4.0.0
+Pillow>=10.0.0
