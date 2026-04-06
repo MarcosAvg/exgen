@@ -21,21 +21,28 @@ class ReportlabLetterEvidenciaGenerator:
     ) -> str:
         _, height = letter
         header_flowables, normal_style = build_title_and_data_table(data)
+        
+        # Cálculo de espacio disponible aproximado
+        # letter = (612, 792)
+        total_h = height - 80 # Margen top(40) + bottom(40)
+        header_h = 110 # Aproximación del espacio que ocupa la cabecera + spacers
+        avail_h = total_h - header_h
+        
         image_flowables, temp_files = build_image_flowables(
-            data, normal_style, progress_callback
+            data, normal_style, progress_callback, avail_height=avail_h
         )
         story = [*header_flowables, *image_flowables]
         doc = SimpleDocTemplate(
             output_path,
             pagesize=letter,
-            rightMargin=30,  # Suficiente para 540pt de contenido + buffer ReportLab
+            rightMargin=30,
             leftMargin=30,
-            topMargin=height * 0.12, # Restaurado margen superior original de Reporte
-            bottomMargin=36,
+            topMargin=40, # Margen superior reducido al no haber fondo
+            bottomMargin=40,
         )
         if progress_callback:
             progress_callback(0.95, "Construyendo documento final...")
-        doc.build(story, onFirstPage=add_background, onLaterPages=add_background)
+        doc.build(story)
         if progress_callback:
             progress_callback(1.0, "Limpiando...")
         for temp in temp_files:
