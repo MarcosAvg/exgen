@@ -69,7 +69,7 @@ class DropZoneCard(Gtk.Box):
 
         click = Gtk.GestureClick()
         click.connect("pressed", self._on_pressed_select)
-        self.add_controller(click)
+        self.content_bin.add_controller(click)
 
         try:
             drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
