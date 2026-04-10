@@ -15,19 +15,37 @@ class DropZoneCard(Gtk.Box):
         *,
         on_select_clicked: Callable[[str], None],
         on_drop_paths: Callable[[list[str], str], None],
+        on_clear: Callable[[str], None] | None = None,
     ):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self._context = context
         self._on_select_clicked = on_select_clicked
         self._on_drop_paths = on_drop_paths
+        self._on_clear = on_clear
         self.add_css_class("dz-card")
         self.set_hexpand(True)
         self.set_vexpand(True)
 
+        # Header: título + botón limpiar
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        header.set_hexpand(True)
+
         lbl_title = Gtk.Label(label=title)
         lbl_title.add_css_class("heading")
         lbl_title.add_css_class("dim-label")
-        self.append(lbl_title)
+        lbl_title.set_hexpand(True)
+        lbl_title.set_xalign(0)
+        header.append(lbl_title)
+
+        self._btn_clear = Gtk.Button(icon_name="edit-clear-symbolic")
+        self._btn_clear.add_css_class("flat")
+        self._btn_clear.add_css_class("circular")
+        self._btn_clear.set_tooltip_text("Limpiar imágenes")
+        self._btn_clear.set_visible(False)
+        self._btn_clear.connect("clicked", self._on_clear_clicked)
+        header.append(self._btn_clear)
+
+        self.append(header)
 
         self.content_bin = Adw.Bin()
         self.content_bin.set_vexpand(True)
@@ -68,6 +86,10 @@ class DropZoneCard(Gtk.Box):
     def _on_pressed_select(self, *_args):
         self._on_select_clicked(self._context)
 
+    def _on_clear_clicked(self, *_args):
+        if self._on_clear:
+            self._on_clear(self._context)
+
     def _on_drop(self, target, value, x, y):
         try:
             target.get_widget().remove_css_class("drag-hover")
@@ -85,6 +107,7 @@ class DropZoneCard(Gtk.Box):
             return False
 
     def update_preview(self, paths):
+        self._btn_clear.set_visible(bool(paths))
         if not paths:
             self.content_bin.set_child(self.placeholder)
             return

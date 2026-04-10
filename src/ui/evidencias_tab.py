@@ -120,6 +120,7 @@ class EvidenciasTab(BaseTab):
             on_select_clicked=self._on_select_images,
             on_drop_paths=self._on_images_dropped,
             on_remove_image=self._on_remove_image,
+            on_clear_all=self._clear_all_images,
         )
         self.right_column.append(self.drop_zone)
 
@@ -282,6 +283,11 @@ class EvidenciasTab(BaseTab):
         if 0 <= index < len(self.image_paths):
             self.image_paths.pop(index)
             self.drop_zone.update_images(self.image_paths)
+
+    def _clear_all_images(self):
+        """Limpia todas las imágenes de evidencia."""
+        self.image_paths = []
+        self.drop_zone.update_images([])
 
     def get_evidence_data(self) -> EvidencePhotoData:
         """Recopila los datos actuales para generar PDF."""

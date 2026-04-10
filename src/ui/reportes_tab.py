@@ -123,18 +123,21 @@ class ReportesTab(BaseTab):
             "antes",
             on_select_clicked=self.open_image_picker,
             on_drop_paths=self.update_image_state,
+            on_clear=self._clear_images,
         )
         self.dz_durante = DropZoneCard(
             "DURANTE",
             "durante",
             on_select_clicked=self.open_image_picker,
             on_drop_paths=self.update_image_state,
+            on_clear=self._clear_images,
         )
         self.dz_despues = DropZoneCard(
             "DESPUÉS",
             "despues",
             on_select_clicked=self.open_image_picker,
             on_drop_paths=self.update_image_state,
+            on_clear=self._clear_images,
         )
 
         self.imgs_box.append(self.dz_antes)
@@ -188,6 +191,10 @@ class ReportesTab(BaseTab):
         if paths:
             self.update_image_state(paths, context)
             set_last_image_dir(os.path.dirname(paths[0]))
+
+    def _clear_images(self, context: str):
+        """Limpia las imágenes de un campo específico."""
+        self.update_image_state([], context)
 
     def update_image_state(self, paths, context):
         """Actualiza el estado de imágenes según contexto."""

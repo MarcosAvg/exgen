@@ -22,19 +22,31 @@ class EvidenceDropZone(Gtk.Box):
         on_select_clicked: Callable[[], None],
         on_drop_paths: Callable[[list[str]], None],
         on_remove_image: Callable[[int], None] | None = None,
+        on_clear_all: Callable[[], None] | None = None,
     ):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.on_select_clicked = on_select_clicked
         self.on_drop_paths = on_drop_paths
         self.on_remove_image = on_remove_image
+        self.on_clear_all = on_clear_all
 
         self.image_paths: list[str] = []
 
-        # Header
+        # Header: título + contador + botón limpiar
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         lbl_title = Gtk.Label(label="Imágenes de Evidencia")
         lbl_title.add_css_class("heading")
+        lbl_title.set_hexpand(True)
+        lbl_title.set_xalign(0)
         header.append(lbl_title)
+
+        self._btn_clear_all = Gtk.Button(icon_name="edit-clear-symbolic")
+        self._btn_clear_all.add_css_class("flat")
+        self._btn_clear_all.add_css_class("circular")
+        self._btn_clear_all.set_tooltip_text("Limpiar todas las imágenes")
+        self._btn_clear_all.set_visible(False)
+        self._btn_clear_all.connect("clicked", self._on_clear_all_clicked)
+        header.append(self._btn_clear_all)
 
         self.append(header)
 
@@ -136,9 +148,14 @@ class EvidenceDropZone(Gtk.Box):
         except Exception:
             return False
 
+    def _on_clear_all_clicked(self, *_args):
+        if self.on_clear_all:
+            self.on_clear_all()
+
     def update_images(self, paths: list[str]):
         """Actualiza la lista de imágenes mostradas."""
         self.image_paths = paths
+        self._btn_clear_all.set_visible(bool(paths))
 
         # Limpiar flow box
         child = self.flow_box.get_first_child()
