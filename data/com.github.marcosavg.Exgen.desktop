@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Exgen
+Comment=Generador de Evidencias
+Type=Application
+Exec=exgen
+Icon=com.github.marcosavg.Exgen
+Terminal=false
+Categories=Office;Utility;
+Keywords=evidencia;generador;reporte;
+StartupNotify=true

@@ -15,3 +15,7 @@ ENV/
 .config/
 /evidencia_output.pdf
 
+# Flatpak
+.flatpak-builder/
+build-dir/
+

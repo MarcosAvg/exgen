@@ -1,0 +1,35 @@
+{
+    "app-id": "com.github.marcosavg.Exgen",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "49",
+    "sdk": "org.gnome.Sdk",
+    "command": "exgen",
+    "finish-args": [
+        "--share=network",
+        "--share=ipc",
+        "--socket=fallback-x11",
+        "--socket=wayland",
+        "--device=dri",
+        "--filesystem=home"
+    ],
+    "modules": [
+        "python3-requirements.json",
+        {
+            "name": "exgen",
+            "buildsystem": "simple",
+            "build-commands": [
+                "install -D data/exgen-launcher.sh /app/bin/exgen",
+                "install -D data/com.github.marcosavg.Exgen.desktop /app/share/applications/com.github.marcosavg.Exgen.desktop",
+                "install -D assets/icon.png /app/share/icons/hicolor/128x128/apps/com.github.marcosavg.Exgen.png",
+                "mkdir -p /app/share/exgen",
+                "cp -r src main.py /app/share/exgen/"
+            ],
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": "."
+                }
+            ]
+        }
+    ]
+}

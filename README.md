@@ -42,6 +42,25 @@ python3 main.py
 *   **Fedora**: `sudo dnf install python3-gobject gtk4 libadwaita`
 *   **Arch Linux**: `sudo pacman -S python-gobject gtk4 libadwaita`
 
+## Empaquetado y Compilación (Flatpak)
+
+Asegúrate de tener instalada la herramienta constructora y los SDKs base correspondientes:
+
+1. Instalar dependencias GNOME necesarias:
+```bash
+flatpak install flathub org.gnome.Sdk//49 org.gnome.Platform//49
+```
+
+2. Compilar e instalar localmente:
+```bash
+flatpak-builder build-dir com.github.marcosavg.Exgen.json --force-clean --user --install
+```
+
+Tras la compilación, "Exgen" estará disponible en tu menú de aplicaciones o podrá ser ejecutada vía terminal:
+```bash
+flatpak run com.github.marcosavg.Exgen
+```
+
 ## Uso de la aplicación
 
 1. **Configurar Catálogos:** Ve al menú principal y configura tus Edificios, Equipos y sus respectivos detalles, estableciendo sus reglas de visibilidad (por ejemplo: "Solo muestra Piso si Edificio es Torre").

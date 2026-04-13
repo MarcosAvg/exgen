@@ -8,7 +8,7 @@ from src.ui.main_window import MainWindow
 
 class EvidenciaApp(Adw.Application):
     def __init__(self):
-        super().__init__(application_id='com.gen.evidencia',
+        super().__init__(application_id='com.github.marcosavg.Exgen',
                          flags=Gio.ApplicationFlags.FLAGS_NONE)
         self.connect('activate', self.on_activate)
 
