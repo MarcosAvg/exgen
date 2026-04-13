@@ -15,6 +15,3 @@ ENV/
 .config/
 /evidencia_output.pdf
 
-# Empaquetado
-dist/
-packaging/.cache/
