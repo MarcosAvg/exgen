@@ -379,3 +379,45 @@ class ExcelRegistryService:
         self._sync_all_meta_rows(wb, data.edificio)
         wb.save(self.output_path)
         return self.output_path
+
+    def check_registry_status(self, data: EvidencePhotoData) -> bool:
+        """
+        Verifica si la combinación actual ya está marcada como Completada en el Excel.
+        """
+        if not os.path.exists(self.output_path):
+            return False
+            
+        try:
+            wb = load_workbook(self.output_path, read_only=True)
+            
+            # Misma lógica de resolución de nombre de hoja que en update_registry
+            prefix = f"{data.tipo_equipo[:14]} - "
+            has_multi = any(s.startswith(prefix) for s in wb.sheetnames)
+            if not has_multi:
+                if data.tipo_equipo in wb.sheetnames:
+                    ws_simple = wb[data.tipo_equipo]
+                    first_b = ws_simple.cell(row=6, column=1).value
+                    if first_b and first_b != data.edificio:
+                        has_multi = True
+            
+            target_name = self._get_safe_sheet_name(data.tipo_equipo, data.edificio if has_multi else None)
+            
+            if target_name not in wb.sheetnames:
+                wb.close()
+                return False
+                
+            ws = wb[target_name]
+            target_det = list(data.dependent_values.values())[0] if data.dependent_values else ""
+            
+            is_completed = False
+            for r in range(6, ws.max_row + 1):
+                if ws.cell(row=r, column=1).value == data.edificio and ws.cell(row=r, column=3).value == target_det:
+                    estado = ws.cell(row=r, column=4).value
+                    if estado == "Completado":
+                        is_completed = True
+                    break
+                    
+            wb.close()
+            return is_completed
+        except Exception:
+            return False

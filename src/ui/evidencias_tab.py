@@ -17,6 +17,7 @@ from src.application.evidence_photo import (
     run_generate_evidence_pdf,
 )
 from src.domain.catalog_models import EvidencePhotoData
+from src.services.excel.excel_service import ExcelRegistryService
 from src.ui.base_tab import BaseTab
 from src.ui.catalog_config_window import CatalogConfigWindow
 from src.ui.widgets.date_selector import DateSelector
@@ -39,7 +40,9 @@ class EvidenciasTab(BaseTab):
         # Cargar sistema de catálogos
         self.catalog_system = get_catalog_system()
 
-        # Dropdowns dinámicos y sus widgets
+        # Inicializar colecciones base
+        self.save_path = get_save_path()
+        self.image_paths: list[str] = []
         self.all_dropdowns: dict[str, Adw.ComboRow] = {}
         self.dependent_rows: dict[str, Adw.ActionRow] = {}
 
@@ -105,12 +108,20 @@ class EvidenciasTab(BaseTab):
         self.grp_dependientes = Adw.PreferencesGroup(title="Información Adicional")
         self.left_column.append(self.grp_dependientes)
 
-        # Grupo: Fecha
+        # Grupo: Fecha y Estado
         grp_datos = Adw.PreferencesGroup(title="Datos del Reporte")
         self.date_selector = DateSelector()
         row_fecha = Adw.ActionRow(title="Fecha")
         row_fecha.add_suffix(self.date_selector)
         grp_datos.add(row_fecha)
+
+        self.row_status = Adw.ActionRow(title="Estado en Excel")
+        self.lbl_status_badge = Gtk.Label(label="Pendiente")
+        self.lbl_status_badge.add_css_class("status-badge")
+        self.lbl_status_badge.add_css_class("pending")
+        self.row_status.add_suffix(self.lbl_status_badge)
+        grp_datos.add(self.row_status)
+
         self.left_column.append(grp_datos)
 
         # (El botón de configuración ahora está en el menú de ajustes de la barra superior)
@@ -126,12 +137,6 @@ class EvidenciasTab(BaseTab):
 
         # Inicializar dropdowns dependientes
         self._refresh_dependent_dropdowns()
-
-        # Guardar ruta
-        self.save_path = get_save_path()
-
-        # Lista de imágenes seleccionadas
-        self.image_paths: list[str] = []
 
     def _create_combobox(self, title: str, items: list[str]) -> Adw.ComboRow:
         """Crea un ComboRow con los items dados."""
@@ -228,6 +233,36 @@ class EvidenciasTab(BaseTab):
                     if not should_be_visible:
                         row.set_selected(0)
                     changed = True
+                    
+        self._update_status_indicator()
+
+    def _update_status_indicator(self):
+        """Consulta el archivo Excel y actualiza el badge de estado en la UI."""
+        data = self.get_evidence_data()
+        
+        # Debemos asegurarnos de no consultar si faltan datos base
+        if not data.edificio or not data.tipo_equipo or data.edificio == "Sin datos" or data.tipo_equipo == "Sin datos":
+            self._set_ui_status("pending")
+            return
+            
+        excel = ExcelRegistryService(self.save_path)
+        is_completed = excel.check_registry_status(data)
+        
+        if is_completed:
+            self._set_ui_status("completed")
+        else:
+            self._set_ui_status("pending")
+            
+    def _set_ui_status(self, status: str):
+        """Actualiza las clases CSS y el texto del badge."""
+        if status == "completed":
+            self.lbl_status_badge.set_label("Completado")
+            self.lbl_status_badge.remove_css_class("pending")
+            self.lbl_status_badge.add_css_class("completed")
+        else:
+            self.lbl_status_badge.set_label("Pendiente")
+            self.lbl_status_badge.remove_css_class("completed")
+            self.lbl_status_badge.add_css_class("pending")
 
     def refresh_catalogs(self):
         """Recarga los catálogos y actualiza la UI. Útil cuando se cambia la config desde MainWindow."""
@@ -344,16 +379,41 @@ class EvidenciasTab(BaseTab):
             self.show_alert("Sin imágenes", "Agrega al menos una imagen.")
             return False
 
-        # Ejecutar tarea con progreso
-        def task(data_in, progress_cb):
-            return run_generate_evidence_pdf(data_in, self.save_path, progress_cb)
+        def _do_generate():
+            # Ejecutar tarea con progreso
+            def task(data_in, progress_cb):
+                return run_generate_evidence_pdf(data_in, self.save_path, progress_cb)
 
-        self.run_task_with_progress(
-            task, 
-            data, 
-            "Generando PDF de Evidencias...",
-            lambda res: self._on_generate_finished(res, callback)
-        )
+            self.run_task_with_progress(
+                task, 
+                data, 
+                "Generando PDF de Evidencias...",
+                lambda res: self._on_generate_finished(res, callback)
+            )
+
+        excel = ExcelRegistryService(self.save_path)
+        if excel.check_registry_status(data):
+            dialog = Adw.MessageDialog(
+                heading="Reporte Existente",
+                body="Esta combinación ya fue marcada como 'Completado' en el Excel. ¿Deseas sobrescribir el PDF y actualizar el registro?",
+                transient_for=self.get_root()
+            )
+            dialog.add_response("cancel", "Cancelar")
+            dialog.add_response("overwrite", "Sobrescribir")
+            dialog.set_response_appearance("overwrite", Adw.ResponseAppearance.DESTRUCTIVE)
+            
+            def on_response(d, response):
+                d.close()
+                if response == "overwrite":
+                    _do_generate()
+                else:
+                    if callback: callback(False, None)
+                    
+            dialog.connect("response", on_response)
+            dialog.present()
+        else:
+            _do_generate()
+
         return True
 
     def _on_generate_finished(self, result, callback):

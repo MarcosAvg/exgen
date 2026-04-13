@@ -46,6 +46,22 @@ MAIN_WINDOW_CSS = """
         box-shadow: 0 4px 12px rgba(0,0,0,0.4);
         border: 1px solid alpha(white, 0.1);
     }
+
+    .status-badge {
+        border-radius: 12px;
+        padding: 4px 12px;
+        font-weight: 700;
+        font-size: 9pt;
+        letter-spacing: 0.5px;
+    }
+    .status-badge.pending {
+        background-color: alpha(@shade_color, 0.08);
+        color: alpha(@window_fg_color, 0.5);
+    }
+    .status-badge.completed {
+        background-color: alpha(@success_color, 0.15);
+        color: @success_color;
+    }
     
     /* Pulido para HeaderBar y Switcher */
     headerbar {
