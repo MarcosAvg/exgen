@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from src.domain.catalog_models import EvidencePhotoData
 from src.services.pdf import get_evidence_generator
+from src.services.excel.excel_service import ExcelRegistryService
 
 
 @dataclass
@@ -66,6 +67,18 @@ def run_generate_evidence_pdf(
 
     try:
         result_path = generator.generate(data, full_path, progress_callback)
+        
+        # Actualizar Registro Excel
+        try:
+            excel_service = ExcelRegistryService(base_output_directory)
+            # Asegurar que el inventario esté al día con los catálogos actuales
+            excel_service.sync_catalogs(excel_service.catalog_system)
+            excel_service.update_registry(data, result_path)
+        except Exception as excel_err:
+            # No bloqueamos el éxito del PDF por un error en el Excel, 
+            # pero sería bueno registrarlo o informar (aquí solo seguimos)
+            print(f"Error al actualizar Excel: {excel_err}")
+
         return GenerateEvidenceSuccess(output_path=result_path)
     except Exception as e:
         return GenerateEvidenceError(

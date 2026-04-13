@@ -203,17 +203,24 @@ class EvidenciasTab(BaseTab):
                 was_visible = row.get_visible()
                 should_be_visible = True
                 
-                if catalog.parent_name:
-                    parent_combo = self.all_dropdowns.get(catalog.parent_name)
-                    if parent_combo:
-                        # Un catálogo es visible si su padre es visible Y el valor coincide
-                        parent_visible = parent_combo.get_visible()
-                        selected_item = parent_combo.get_selected_item()
-                        parent_value = selected_item.get_string() if selected_item else ""
-                        
-                        should_be_visible = parent_visible and (parent_value in catalog.parent_values)
-                    else:
-                        should_be_visible = False
+                if catalog.dependencies:
+                    # Lógica AND: todas las dependencias deben cumplirse
+                    for dep in catalog.dependencies:
+                        parent_combo = self.all_dropdowns.get(dep.parent_name)
+                        if parent_combo:
+                            # Un catálogo es visible si su padre es visible Y el valor coincide
+                            parent_visible = parent_combo.get_visible()
+                            selected_item = parent_combo.get_selected_item()
+                            parent_value = selected_item.get_string() if selected_item else ""
+                            
+                            condition_met = parent_visible and (parent_value in dep.values)
+                            if not condition_met:
+                                should_be_visible = False
+                                break
+                        else:
+                            # Si el padre no existe, no se puede cumplir la condición
+                            should_be_visible = False
+                            break
                 
                 if was_visible != should_be_visible:
                     row.set_visible(should_be_visible)
@@ -301,6 +308,7 @@ class EvidenciasTab(BaseTab):
 
         # Obtener valores de catálogos dependientes (solo si son visibles)
         dependent_values = {}
+        labels = {}
         for catalog in self.catalog_system.get_dependent_catalogs():
             row = self.dependent_rows.get(catalog.name)
             if row and row.get_visible():
@@ -309,6 +317,7 @@ class EvidenciasTab(BaseTab):
                     value = item.get_string()
                     if value and value != "Sin datos":
                         dependent_values[catalog.name] = value
+                        labels[catalog.name] = catalog.label
 
         # Obtener fecha del widget DateSelector
         fecha = self.date_selector.get_date_string()
@@ -318,6 +327,7 @@ class EvidenciasTab(BaseTab):
             tipo_equipo=tipo_equipo,
             fecha=fecha,
             dependent_values=dependent_values,
+            labels=labels,
             imagenes=self.image_paths.copy(),
         )
 

@@ -5,18 +5,33 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+class CatalogDependency:
+    """Representa una condición para que un catálogo sea visible."""
+    parent_name: str
+    values: list[str] = field(default_factory=list)
+
+@dataclass
 class Catalog:
     """
     Un catálogo representa tanto los valores disponibles como un dropdown en la UI.
     Los dos primeros catálogos son Edificio y Tipo de Equipo (fijos).
-    Los siguientes son dependientes y aparecen dinámicamente.
+    Los siguientes son dependientes y aparecen dinámicamente si se cumplen todas sus dependencias.
     """
     name: str  # identificador técnico
     label: str  # etiqueta visible en la UI
     items: list[str] = field(default_factory=list)
     order: int = 0  # orden de aparición en la UI
-    parent_name: str | None = None  # catálogo del que depende
-    parent_values: list[str] = field(default_factory=list)  # valores que lo activan
+    dependencies: list[CatalogDependency] = field(default_factory=list)
+
+    @property
+    def parent_name(self) -> str | None:
+        """Propiedad de conveniencia para compatibilidad con código que usa un solo padre."""
+        return self.dependencies[0].parent_name if self.dependencies else None
+
+    @property
+    def parent_values(self) -> list[str]:
+        """Propiedad de conveniencia para compatibilidad con código que usa un solo padre."""
+        return self.dependencies[0].values if self.dependencies else []
 
 
 @dataclass
@@ -71,6 +86,27 @@ class CatalogSystem:
         for i, cat in enumerate(self.catalogs):
             cat.order = i
 
+    def rename_item(self, catalog_name: str, old_value: str, new_value: str) -> None:
+        """Cambia el nombre de un item y propaga el cambio a todas las dependencias."""
+        cat = self.get_catalog_by_name(catalog_name)
+        if not cat:
+            return
+
+        if old_value not in cat.items:
+            return
+            
+        # 1. Renombrar en el propio catálogo
+        idx = cat.items.index(old_value)
+        cat.items[idx] = new_value
+        
+        # 2. Propagar a todas las dependencias de otros catálogos
+        for other_cat in self.catalogs:
+            for dep in other_cat.dependencies:
+                if dep.parent_name == catalog_name:
+                    if old_value in dep.values:
+                        val_idx = dep.values.index(old_value)
+                        dep.values[val_idx] = new_value
+
     def to_dict(self) -> dict:
         """Serializa a diccionario."""
         return {
@@ -80,8 +116,10 @@ class CatalogSystem:
                     "label": c.label,
                     "items": c.items,
                     "order": c.order,
-                    "parent_name": c.parent_name,
-                    "parent_values": c.parent_values
+                    "dependencies": [
+                        {"parent_name": d.parent_name, "values": d.values}
+                        for d in c.dependencies
+                    ]
                 }
                 for c in self.catalogs
             ]
@@ -89,7 +127,7 @@ class CatalogSystem:
 
     @classmethod
     def from_dict(cls, data: dict) -> "CatalogSystem":
-        """Deserializa desde diccionario. Soporta formato antiguo y nuevo."""
+        """Deserializa desde diccionario. Soporta formato antiguo y nuevo (multi-dependencia)."""
         system = cls()
         system.catalogs = []
 
@@ -97,29 +135,41 @@ class CatalogSystem:
 
         # Manejar formato antiguo (dict) o nuevo (list)
         if isinstance(catalogs_data, dict):
-            # Formato antiguo: convertir a lista
+            # Muy antiguo
             for name, cat_data in catalogs_data.items():
-                catalog = Catalog(
+                cat = Catalog(
                     name=cat_data.get("name", name),
                     label=cat_data.get("label", name),
                     items=cat_data.get("items", []),
-                    order=cat_data.get("order", 0),
-                    parent_name=cat_data.get("parent_name"),
-                    parent_values=cat_data.get("parent_values", [])
+                    order=cat_data.get("order", 0)
                 )
-                system.catalogs.append(catalog)
+                # Migrar dependencia simple
+                p_name = cat_data.get("parent_name")
+                if p_name:
+                    cat.dependencies.append(CatalogDependency(p_name, cat_data.get("parent_values", [])))
+                system.catalogs.append(cat)
         elif isinstance(catalogs_data, list):
-            # Formato nuevo
+            # Formato intermedio y nuevo
             for cat_data in catalogs_data:
-                catalog = Catalog(
+                cat = Catalog(
                     name=cat_data.get("name", ""),
                     label=cat_data.get("label", ""),
                     items=cat_data.get("items", []),
-                    order=cat_data.get("order", 0),
-                    parent_name=cat_data.get("parent_name"),
-                    parent_values=cat_data.get("parent_values", [])
+                    order=cat_data.get("order", 0)
                 )
-                system.catalogs.append(catalog)
+                
+                # Cargar dependencias nuevas
+                deps_data = cat_data.get("dependencies")
+                if deps_data and isinstance(deps_data, list):
+                    for d in deps_data:
+                        cat.dependencies.append(CatalogDependency(d["parent_name"], d.get("values", [])))
+                else:
+                    # Migrar dependencia única (formato intermedio)
+                    p_name = cat_data.get("parent_name")
+                    if p_name:
+                        cat.dependencies.append(CatalogDependency(p_name, cat_data.get("parent_values", [])))
+                
+                system.catalogs.append(cat)
 
         # Si no hay catálogos, crear los base
         if not system.catalogs:
@@ -139,6 +189,8 @@ class EvidencePhotoData:
     fecha: str  # Formato DD-MM-YYYY
     # Valores de catálogos dependientes: {catalog_name: valor_seleccionado}
     dependent_values: dict[str, str] = field(default_factory=dict)
+    # Etiquetas de los catálogos para el nombre del archivo: {catalog_name: etiqueta}
+    labels: dict[str, str] = field(default_factory=dict)
     imagenes: list[str] = field(default_factory=list)
 
     def get_subfolder_path(self) -> str:
@@ -148,16 +200,30 @@ class EvidencePhotoData:
     def get_filename(self) -> str:
         """
         Genera nombre del archivo:
-        TipoEquipo - Edificio - Dep1 - Dep2 - ... - [Fecha].pdf
+        TipoEquipo - Edificio - [Label] Dep1 - [Label] Dep2 - ... - [DD-MM-YY].pdf
         """
         parts = [self.tipo_equipo, self.edificio]
 
-        # Agregar valores de catálogos dependientes en orden
-        for value in self.dependent_values.values():
+        # Agregar valores de catálogos dependientes en orden, incluyendo su etiqueta
+        for name, value in self.dependent_values.items():
             if value:
-                parts.append(value)
+                label = self.labels.get(name)
+                if label:
+                    parts.append(f"{label} {value}")
+                else:
+                    parts.append(value)
 
-        parts.append(f"[{self.fecha}]")
+        # Formatear fecha a 2 dígitos para el año [DD-MM-YY]
+        fecha_partes = self.fecha.split("-")
+        if len(fecha_partes) == 3:
+            d, m, y = fecha_partes
+            if len(y) == 4:
+                y = y[2:]  # 2026 -> 26
+            fecha_short = f"{d}-{m}-{y}"
+        else:
+            fecha_short = self.fecha
+
+        parts.append(f"[{fecha_short}]")
         return " - ".join(parts) + ".pdf"
 
     def get_full_path(self, base_dir: str) -> str:
