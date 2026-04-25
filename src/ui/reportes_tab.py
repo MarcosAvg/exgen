@@ -15,6 +15,7 @@ from src.application.evidence_report import (
     GenerateReportError,
     GenerateReportSuccess,
     run_generate_evidence_report,
+    run_generate_pptx_report,
 )
 from src.domain.models import EvidenciaData
 from src.ui.base_tab import BaseTab
@@ -239,6 +240,24 @@ class ReportesTab(BaseTab):
             task, 
             data, 
             "Generando PDF...",
+            lambda res: self._on_generate_finished(res, callback)
+        )
+        return True
+
+    def generate_pptx(self, master_path, callback=None):
+        """Inicia generación de PPTX."""
+        data = self._collect_evidencia_data()
+        if not data.plantel:
+            self.show_alert("Faltan datos", "Por favor completa al menos el campo Plantel.")
+            return False
+
+        def task(data_in, progress_cb):
+            return run_generate_pptx_report(data_in, master_path, progress_callback=progress_cb)
+
+        self.run_task_with_progress(
+            task,
+            data,
+            "Anexando a PPT Maestro...",
             lambda res: self._on_generate_finished(res, callback)
         )
         return True

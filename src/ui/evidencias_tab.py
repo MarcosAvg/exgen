@@ -15,6 +15,7 @@ from src.application.evidence_photo import (
     GenerateEvidenceError,
     GenerateEvidenceSuccess,
     run_generate_evidence_pdf,
+    run_generate_evidence_pptx,
 )
 from src.domain.catalog_models import EvidencePhotoData
 from src.services.excel.excel_service import ExcelRegistryService
@@ -414,6 +415,24 @@ class EvidenciasTab(BaseTab):
         else:
             _do_generate()
 
+        return True
+
+    def generate_pptx(self, master_path, callback=None):
+        """Inicia generación de PPTX (Anexado)."""
+        data = self.get_evidence_data()
+        if not data.edificio or not data.tipo_equipo or not data.imagenes:
+            self.show_alert("Datos incompletos", "Asegúrate de tener imágenes y los campos base.")
+            return False
+
+        def task(data_in, progress_cb):
+            return run_generate_evidence_pptx(data_in, master_path, progress_cb)
+
+        self.run_task_with_progress(
+            task,
+            data,
+            "Anexando a PPT Maestro...",
+            lambda res: self._on_generate_finished(res, callback)
+        )
         return True
 
     def _on_generate_finished(self, result, callback):

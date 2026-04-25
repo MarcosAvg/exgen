@@ -59,6 +59,48 @@
                     "sha256": "5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2"
                 }
             ]
+        },
+        {
+            "name": "python3-lxml",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"lxml\" --no-build-isolation"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/ee/b8/ead7c10efff731738c72e59ed6eb5791854879fbed7ae98781a12006263a/lxml-6.1.0-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl",
+                    "sha256": "e69aa6805905807186eb00e66c6d97a935c928275182eb02ee40ba00da9623b2"
+                }
+            ]
+        },
+        {
+            "name": "python3-XlsxWriter",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"XlsxWriter\" --no-build-isolation"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/b0/d7/37fe058e5a7ef6f9eec2cd7d72221b6a382be7fc06de7d58a17684535359/xlsxwriter-3.2.9-py3-none-any.whl",
+                    "sha256": "1cc3d41f71df42f7411606553df8a2f643e2775c742c31e9c20a4427e5a01bc9"
+                }
+            ]
+        },
+        {
+            "name": "python3-pptx",
+            "buildsystem": "simple",
+            "build-commands": [
+                "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"python-pptx\" --no-build-isolation"
+            ],
+            "sources": [
+                {
+                    "type": "file",
+                    "url": "https://files.pythonhosted.org/packages/f3/04/89759bc438ec688849b389f41b3152ea869502758fc04d7f5734208a984a/python_pptx-1.0.2-py3-none-any.whl",
+                    "sha256": "01271168f1bedc3bc8880f68205260195ee67b62fe6542616f73c4155a02263d"
+                }
+            ]
         }
     ]
 }

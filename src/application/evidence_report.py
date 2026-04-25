@@ -42,3 +42,28 @@ def run_generate_evidence_report(
             title="Error",
             message=f"Ocurrió un error al generar PDF: {e}",
         )
+
+
+def run_generate_pptx_report(
+    data: EvidenciaData,
+    output_path: str,
+    progress_callback: ProgressCallback = None,
+) -> GenerateReportSuccess | GenerateReportError:
+    from src.services.pptx import get_pptx_generator
+    
+    validation = validate_evidence_for_export(data)
+    if not validation.ok:
+        return GenerateReportError(
+            title="Faltan datos obligatorios",
+            message="Por favor completa al menos el campo Plantel.",
+        )
+    
+    generator = get_pptx_generator()
+    try:
+        out_path = generator.generate(data, output_path, progress_callback)
+        return GenerateReportSuccess(output_path=out_path)
+    except Exception as e:
+        return GenerateReportError(
+            title="Error",
+            message=f"Ocurrió un error al generar PPTX: {e}",
+        )

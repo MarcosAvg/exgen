@@ -6,7 +6,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, Gio, Gtk
 
 from src.ui.catalog_config_window import CatalogConfigWindow
 from src.ui.evidencias_tab import EvidenciasTab
@@ -15,6 +15,9 @@ from src.utils.config_manager import (
     get_catalog_system,
     get_save_path,
     set_save_path,
+    get_master_pptx_path,
+    set_master_pptx_path,
+    get_last_image_dir,
 )
 
 
@@ -42,10 +45,16 @@ class MainWindow(Adw.ApplicationWindow):
         self.view_switcher_title = Adw.ViewSwitcherTitle()
         header.set_title_widget(self.view_switcher_title)
 
-        # Botón de generar (discreto en el HeaderBar - ahora a la izquierda)
+        # Botón de generar PDF
         self.btn_gen = Gtk.Button(label="Generar PDF")
         self.btn_gen.connect("clicked", self.on_generate_pdf)
         header.pack_start(self.btn_gen)
+
+        # Botón de generar PPT
+        self.btn_gen_ppt = Gtk.Button(label="Generar PPT")
+        self.btn_gen_ppt.add_css_class("suggested-action")
+        self.btn_gen_ppt.connect("clicked", self.on_generate_pptx)
+        header.pack_start(self.btn_gen_ppt)
 
         # Botón de ajustes/configuración
         btn_settings = Gtk.MenuButton(icon_name="document-properties-symbolic")
@@ -76,6 +85,18 @@ class MainWindow(Adw.ApplicationWindow):
         btn_cat.connect("clicked", self.on_open_catalog_config)
         self.row_catalogos.add_suffix(btn_cat)
         grp_destino.add(self.row_catalogos)
+
+        # Fila de PPT Maestro
+        self.master_pptx = get_last_image_dir() # Fallback
+        master_path = get_master_pptx_path()
+        self.row_pptx = Adw.ActionRow(title="PPT Maestro", subtitle=master_path if master_path else "No configurado")
+        self.row_pptx.set_activatable(True)
+        self.row_pptx.connect("activated", self.on_select_master_pptx)
+        btn_pptx = Gtk.Button(icon_name="document-new-symbolic", valign=Gtk.Align.CENTER)
+        btn_pptx.set_tooltip_text("Seleccionar PPT Maestro")
+        btn_pptx.connect("clicked", self.on_select_master_pptx)
+        self.row_pptx.add_suffix(btn_pptx)
+        grp_destino.add(self.row_pptx)
 
         self.popover_settings.set_child(grp_destino)
         btn_settings.set_popover(self.popover_settings)
@@ -130,6 +151,26 @@ class MainWindow(Adw.ApplicationWindow):
         else:
             self.tab_evidencias.generate_pdf(callback)
 
+    def on_generate_pptx(self, btn):
+        """Genera PPTX según la pestaña activa."""
+        master_path = get_master_pptx_path()
+        if not master_path:
+            self.on_select_master_pptx()
+            master_path = get_master_pptx_path()
+            if not master_path:
+                return
+
+        current = self.stack.get_visible_child()
+        btn.set_sensitive(False)
+
+        def callback(success, path):
+            btn.set_sensitive(True)
+
+        if current == self.tab_reportes:
+            self.tab_reportes.generate_pptx(master_path, callback)
+        else:
+            self.tab_evidencias.generate_pptx(master_path, callback)
+
     def on_open_catalog_config(self, *args):
         """Abre la ventana de configuración de catálogos y refresca las pestañas."""
         # Cerrar el popover manualmente (mejor UX)
@@ -162,6 +203,36 @@ class MainWindow(Adw.ApplicationWindow):
                 # Actualizar ruta en ambas pestañas
                 self.tab_reportes.save_path = path
                 self.tab_evidencias.save_path = path
+        except Exception:
+            pass
+
+    def on_select_master_pptx(self, *args):
+        """Abre diálogo para seleccionar o crear el PPT Maestro."""
+        self.popover_settings.popdown()
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Selecciona o crea el archivo PPT Maestro")
+        
+        filter_pptx = Gtk.FileFilter()
+        filter_pptx.set_name("PowerPoint")
+        filter_pptx.add_mime_type("application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        filter_pptx.add_pattern("*.pptx")
+        
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(filter_pptx)
+        dialog.set_filters(filters)
+        
+        dialog.save(self, None, self.on_master_pptx_response)
+
+    def on_master_pptx_response(self, dialog, result):
+        """Procesa la selección del PPT Maestro."""
+        try:
+            file = dialog.save_finish(result)
+            if file:
+                path = file.get_path()
+                if not path.endswith(".pptx"):
+                    path += ".pptx"
+                set_master_pptx_path(path)
+                self.row_pptx.set_subtitle(path)
         except Exception:
             pass
 

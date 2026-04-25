@@ -36,6 +36,15 @@ def set_save_path(path):
     config["save_path"] = path
     _save_config(config)
 
+def get_master_pptx_path():
+    config = _load_config()
+    return config.get("master_pptx_path")
+
+def set_master_pptx_path(path):
+    config = _load_config()
+    config["master_pptx_path"] = path
+    _save_config(config)
+
 def get_last_image_dir():
     config = _load_config()
     path = config.get("last_image_dir")

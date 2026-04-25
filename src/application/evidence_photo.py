@@ -85,3 +85,34 @@ def run_generate_evidence_pdf(
             title="Error al generar PDF",
             message=f"Ocurrió un error: {e}",
         )
+
+
+def run_generate_evidence_pptx(
+    data: EvidencePhotoData,
+    pptx_path: str,
+    progress_callback=None,
+) -> GenerateEvidenceSuccess | GenerateEvidenceError:
+    """ Genera PPTX de evidencias (Anexado). """
+    if not data.edificio or not data.tipo_equipo:
+        return GenerateEvidenceError(
+            title="Faltan datos obligatorios",
+            message="Por favor selecciona Edificio y Tipo de Equipo.",
+        )
+
+    if not data.imagenes:
+        return GenerateEvidenceError(
+            title="Sin imágenes",
+            message="Por favor selecciona al menos una imagen.",
+        )
+
+    from src.services.pptx import get_pptx_generator
+    generator = get_pptx_generator()
+
+    try:
+        result_path = generator.generate(data, pptx_path, progress_callback)
+        return GenerateEvidenceSuccess(output_path=result_path)
+    except Exception as e:
+        return GenerateEvidenceError(
+            title="Error al generar PPTX",
+            message=f"Ocurrió un error: {e}",
+        )
