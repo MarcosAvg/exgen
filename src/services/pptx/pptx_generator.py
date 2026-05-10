@@ -11,7 +11,8 @@ from pptx.enum.text import MSO_ANCHOR
 from src.domain.models import EvidenciaData
 from src.domain.catalog_models import EvidencePhotoData
 from src.services.pdf.protocols import ProgressCallback
-from src.utils.helpers import get_asset_path
+from src.utils.helpers import get_asset_path, prepare_image_stream, get_image_aspect_ratio
+from src.utils.gallery_layout import calculate_gallery_layout
 
 
 class PptxEvidenceGenerator:
@@ -102,7 +103,15 @@ class PptxEvidenceGenerator:
 
     def _build_report_categories(self, slide, data: EvidenciaData, x_in: float, y_in: float, w_in: float, h_in: float):
         """ Recrea build_image_flowables usando tablas nativas de PPT """
-        cat_target_h_in = h_in / 3.0
+        # Cada categoría ocupa 1/3 del espacio por defecto.
+        # Si se solicita expandir, se divide entre el número de categorías presentes.
+        num_cats = 3.0
+        if data.expandir_espacio:
+            present_cats = sum(1 for imgs in [data.img_antes, data.img_durante, data.img_despues] if imgs)
+            if present_cats > 0:
+                num_cats = float(present_cats)
+        
+        cat_target_h_in = h_in / num_cats
         
         header_w_pts = 25
         img_area_w_pts = w_in * 72.0 - header_w_pts
@@ -118,25 +127,14 @@ class PptxEvidenceGenerator:
 
         for title, paths in categories:
             if not paths:
-                current_y_in += cat_target_h_in
+                # Si no expandimos, dejamos el hueco avanzando la Y
+                # Si expandimos, simplemente saltamos esta categoría
+                if not data.expandir_espacio:
+                    current_y_in += cat_target_h_in
                 continue
                 
-            # Calcular filas
-            rows = self._build_justified_rows(paths, img_area_w_pts)
-            rows = self._rebalance_last_rows(rows, img_area_w_pts)
-            
-            row_heights_pts = []
-            for row in rows:
-                sum_ar = sum(ar for _, ar in row)
-                natural_h = img_area_w_pts / sum_ar if sum_ar > 0 else 100.0
-                row_heights_pts.append(natural_h)
-                
-            total_natural_h_pts = sum(row_heights_pts)
-            cat_target_h_pts = cat_target_h_in * 72.0
-            
-            # Scale para llenar exactamente la altura de la categoría (como en Reportlab)
-            scale = cat_target_h_pts / total_natural_h_pts if total_natural_h_pts > 0 else 1.0
-            scaled_row_heights_pts = [h * scale for h in row_heights_pts]
+            # Calcular filas usando la utilidad compartida
+            rows, scaled_row_heights_pts = calculate_gallery_layout(paths, img_area_w_pts, cat_target_h_in * 72.0)
             
             # 1. Tabla exterior (Header + Contenedor general trasero)
             outer_shape = slide.shapes.add_table(
@@ -158,27 +156,16 @@ class PptxEvidenceGenerator:
             self._add_borders(outer_table)
 
             # 2. Tablas internas (Una tabla por 'row' de imagenes)
-            current_img_y_pts = current_y_in * 72.0
+            total_content_h = sum(scaled_row_heights_pts)
+            y_offset = (cat_target_h_in * 72.0 - total_content_h) / 2
+            current_img_y_pts = current_y_in * 72.0 + y_offset
             
             for row_items, row_h_pts in zip(rows, scaled_row_heights_pts):
                 sum_ar = sum(ar for _, ar in row_items)
-                cols_count = len(row_items)
-                
-                # Crear tabla para la fila (dibujará las líneas / padding frame)
-                row_shape = slide.shapes.add_table(
-                    1, cols_count,
-                    Inches(x_in + header_w_pts/72.0), Inches(current_img_y_pts / 72.0),
-                    Inches(img_area_w_pts / 72.0), Inches(row_h_pts / 72.0)
-                )
-                row_table = row_shape.table
-                self._add_borders(row_table)
-                
                 current_img_x_pts = x_in * 72.0 + header_w_pts
                 
                 for i, (path, ar) in enumerate(row_items):
                     col_w_pts = (ar / sum_ar) * img_area_w_pts
-                    row_table.columns[i].width = Pt(col_w_pts)
-                    self._fill_cell(row_table.cell(0, i), "", bold=False)
                     
                     # Dibujar Imagen real ajustada por padding sobre la tabla
                     cell_x_in = current_img_x_pts / 72.0
@@ -202,7 +189,7 @@ class PptxEvidenceGenerator:
 
     def _add_fitted_image(self, slide, path, x_in, y_in, max_w_in, max_h_in):
         """ Escala la imagen para caber en la caja (x, y, w, h) manteniendo aspect ratio. """
-        ar = self._get_aspect_ratio(path)
+        ar = get_image_aspect_ratio(path)
         
         target_w = max_w_in
         target_h = max_w_in / ar
@@ -214,68 +201,17 @@ class PptxEvidenceGenerator:
         off_x = (max_w_in - target_w) / 2
         off_y = (max_h_in - target_h) / 2
         
-        slide.shapes.add_picture(path, Inches(x_in + off_x), Inches(y_in + off_y), width=Inches(target_w), height=Inches(target_h))
-
-    def _get_aspect_ratio(self, path: str) -> float:
+        img_source, is_stream = prepare_image_stream(path)
         try:
-            from PIL import Image as PILImage, ImageOps
-            with PILImage.open(path) as img:
-                img = ImageOps.exif_transpose(img)
-                w, h = img.size
-                return float(w) / h if h > 0 else 4 / 3
+            slide.shapes.add_picture(img_source, Inches(x_in + off_x), Inches(y_in + off_y), width=Inches(target_w), height=Inches(target_h))
         except Exception:
-            return 4 / 3
+            # Fallback
+            pass
+        finally:
+            if is_stream and hasattr(img_source, 'close'):
+                img_source.close()
 
-    def _build_justified_rows(self, path_list, img_area_w_pts, pack_row_h_pts=100):
-        items = [(p, self._get_aspect_ratio(p)) for p in path_list]
-        fill_threshold = img_area_w_pts / float(pack_row_h_pts)
 
-        rows = []
-        current_row = []
-        current_sum = 0.0
-
-        for path, ar in items:
-            if current_row and current_sum + ar > fill_threshold:
-                rows.append(current_row)
-                current_row = [(path, ar)]
-                current_sum = ar
-            else:
-                current_row.append((path, ar))
-                current_sum += ar
-
-        if current_row:
-            rows.append(current_row)
-
-        return rows
-
-    def _rebalance_last_rows(self, rows, img_area_w_pts, max_row_height_ratio=1.8):
-        if len(rows) < 2:
-            return rows
-
-        sum_ar_prev = sum(ar for _, ar in rows[-2])
-        sum_ar_last = sum(ar for _, ar in rows[-1])
-
-        h_prev = img_area_w_pts / sum_ar_prev if sum_ar_prev > 0 else 1.0
-        h_last = img_area_w_pts / sum_ar_last if sum_ar_last > 0 else 1.0
-
-        if h_last / h_prev <= max_row_height_ratio:
-            return rows
-
-        combined = rows[-2] + rows[-1]
-        total_ar = sum(ar for _, ar in combined)
-        half_ar = total_ar / 2.0
-
-        best_split = 1
-        best_diff = float("inf")
-        cumsum = 0.0
-        for i, (_, ar) in enumerate(combined[:-1]):
-            cumsum += ar
-            diff = abs(cumsum - half_ar)
-            if diff < best_diff:
-                best_diff = diff
-                best_split = i + 1
-
-        return rows[:-2] + [combined[:best_split], combined[best_split:]]
 
     def _add_header_tables_reportlab(self, slide, data, x_in, y_in):
         rows, cols = 1, 4

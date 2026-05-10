@@ -44,3 +44,36 @@ def process_image_for_pdf(img_path: str, max_width: float, max_height: float) ->
         
     ratio = min(max_width / orig_width, max_height / orig_height)
     return res_path, orig_width * ratio, orig_height * ratio
+
+def get_image_aspect_ratio(path: str) -> float:
+    """Retorna el aspect ratio (w/h) de la imagen después de corrección EXIF."""
+    try:
+        with Image.open(path) as img:
+            img = ImageOps.exif_transpose(img)
+            w, h = img.size
+            return float(w) / h if h > 0 else 4 / 3
+    except Exception:
+        return 4 / 3  # Fallback: landscape 4:3
+
+def prepare_image_stream(path: str):
+    """
+    Prepara la imagen para PPTX, aplicando rotación EXIF y convirtiendo formatos no soportados a JPEG en un BytesIO.
+    Retorna (path, es_stream) donde 'path' puede ser un io.BytesIO o el string original.
+    """
+    import io
+    try:
+        with Image.open(path) as img:
+            img_transposed = ImageOps.exif_transpose(img)
+            supported_formats = ['BMP', 'GIF', 'JPEG', 'PNG', 'TIFF', 'WMF']
+            if img.format not in supported_formats or img_transposed is not img or img.mode != 'RGB':
+                final_img = img_transposed
+                if final_img.mode != 'RGB':
+                    final_img = final_img.convert('RGB')
+                img_stream = io.BytesIO()
+                final_img.save(img_stream, format='JPEG', quality=85)
+                img_stream.seek(0)
+                return img_stream, True
+            else:
+                return path, False
+    except Exception:
+        return path, False

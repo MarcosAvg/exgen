@@ -101,6 +101,14 @@ class ReportesTab(BaseTab):
         hbox_desc.append(vbox_desc)
         hbox_desc.append(self.icon_edit)
         self.row_desc.set_child(hbox_desc)
+        
+        self.row_expand = Adw.ActionRow(
+            title="Expandir espacio",
+            subtitle="Ocupar toda la hoja si faltan conceptos (Antes/Durante/Después)"
+        )
+        self.switch_expand = Gtk.Switch()
+        self.switch_expand.set_valign(Gtk.Align.CENTER)
+        self.row_expand.add_suffix(self.switch_expand)
 
         grp_detalles.add(self.entry_plantel)
         grp_detalles.add(self.entry_cct)
@@ -108,6 +116,7 @@ class ReportesTab(BaseTab):
         grp_detalles.add(self.entry_municipio)
         grp_detalles.add(self.entry_num)
         grp_detalles.add(self.row_desc)
+        grp_detalles.add(self.row_expand)
         self.left_column.append(grp_detalles)
 
         # Contenido de la Columna Derecha (Galería)
@@ -221,6 +230,7 @@ class ReportesTab(BaseTab):
             img_antes=self.paths_antes,
             img_durante=self.paths_durante,
             img_despues=self.paths_despues,
+            expandir_espacio=self.switch_expand.get_active(),
         )
 
     def generate_pdf(self, callback=None):
@@ -301,3 +311,4 @@ class ReportesTab(BaseTab):
         self.dz_antes.update_preview([])
         self.dz_durante.update_preview([])
         self.dz_despues.update_preview([])
+        self.switch_expand.set_active(False)

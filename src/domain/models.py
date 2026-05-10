@@ -12,3 +12,4 @@ class EvidenciaData:
     img_antes: list[str] = field(default_factory=list)
     img_durante: list[str] = field(default_factory=list)
     img_despues: list[str] = field(default_factory=list)
+    expandir_espacio: bool = False
