@@ -22,7 +22,7 @@
                 "install -D data/com.github.marcosavg.Exgen.desktop /app/share/applications/com.github.marcosavg.Exgen.desktop",
                 "install -D assets/icon.png /app/share/icons/hicolor/512x512/apps/com.github.marcosavg.Exgen.png",
                 "mkdir -p /app/share/exgen",
-                "cp -r src main.py /app/share/exgen/"
+                "cp -r src assets main.py /app/share/exgen/"
             ],
             "sources": [
                 {
