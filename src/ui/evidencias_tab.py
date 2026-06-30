@@ -3,7 +3,7 @@ UI de la pestaña Evidencias - dropdowns jerárquicos y generación de PDF.
 """
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import gi
 
@@ -28,6 +28,12 @@ from src.utils.config_manager import (
     get_last_evidence_image_dir,
     get_save_path,
     set_last_evidence_image_dir,
+    get_last_date,
+    set_last_date,
+    get_auto_date_enabled,
+    set_auto_date_enabled,
+    get_auto_date_limit,
+    set_auto_date_limit,
 )
 
 
@@ -111,10 +117,42 @@ class EvidenciasTab(BaseTab):
 
         # Grupo: Fecha y Estado
         grp_datos = Adw.PreferencesGroup(title="Datos del Reporte")
-        self.date_selector = DateSelector()
+        
+        last_date_str = get_last_date()
+        if last_date_str:
+            try:
+                initial_date = datetime.strptime(last_date_str, "%d-%m-%Y")
+                self.date_selector = DateSelector(initial_date=initial_date)
+            except ValueError:
+                self.date_selector = DateSelector()
+        else:
+            self.date_selector = DateSelector()
+            
+        self.date_selector.connect("date-changed", self._on_date_changed)
+        
         row_fecha = Adw.ActionRow(title="Fecha")
         row_fecha.add_suffix(self.date_selector)
         grp_datos.add(row_fecha)
+
+        self.current_date_generation_count = 0
+        
+        self.switch_auto_date = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.switch_auto_date.set_active(get_auto_date_enabled())
+        self.switch_auto_date.connect("notify::active", self._on_auto_date_toggled)
+        
+        self.spin_auto_date_limit = Gtk.SpinButton.new_with_range(1, 20, 1)
+        self.spin_auto_date_limit.set_value(get_auto_date_limit())
+        self.spin_auto_date_limit.set_valign(Gtk.Align.CENTER)
+        self.spin_auto_date_limit.connect("value-changed", self._on_auto_date_limit_changed)
+
+        box_auto_date = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        box_auto_date.append(self.spin_auto_date_limit)
+        box_auto_date.append(Gtk.Label(label="archivos"))
+        box_auto_date.append(self.switch_auto_date)
+
+        row_auto_date = Adw.ActionRow(title="Avance automático", subtitle="Cambiar día tras N reportes")
+        row_auto_date.add_suffix(box_auto_date)
+        grp_datos.add(row_auto_date)
 
         self.row_status = Adw.ActionRow(title="Estado en Excel")
         self.lbl_status_badge = Gtk.Label(label="Pendiente")
@@ -191,6 +229,18 @@ class EvidenciasTab(BaseTab):
     def _on_catalog_changed(self, *args):
         """Callback cuando cambia cualquier catálogo."""
         self._update_visibility()
+
+    def _on_date_changed(self, widget, date_str: str):
+        """Guarda la fecha seleccionada para persistencia."""
+        set_last_date(date_str)
+        self.current_date_generation_count = 0
+
+    def _on_auto_date_toggled(self, widget, pspec):
+        set_auto_date_enabled(self.switch_auto_date.get_active())
+        self.current_date_generation_count = 0
+
+    def _on_auto_date_limit_changed(self, widget):
+        set_auto_date_limit(int(self.spin_auto_date_limit.get_value()))
 
     def _update_visibility(self):
         """Calcula qué catálogos deben ser visibles según sus dependencias."""
@@ -441,8 +491,56 @@ class EvidenciasTab(BaseTab):
             nice_name = os.path.basename(result.output_path)
             success_toast = Adw.Toast.new(f"PDF Generado: {nice_name}")
             self.toast_overlay.add_toast(success_toast)
+            
+            # Actualizar estado del Excel en la UI automáticamente tras generar
+            self._update_status_indicator()
+            
             if callback:
                 callback(True, result.output_path)
+                
+            # Lógica de auto-avance de fecha
+            if self.switch_auto_date.get_active():
+                self.current_date_generation_count += 1
+                limit = int(self.spin_auto_date_limit.get_value())
+                if self.current_date_generation_count >= limit:
+                    current_date = self.date_selector.get_date()
+                    next_date = current_date + timedelta(days=1)
+                    if next_date.weekday() == 6:  # 6 es Domingo
+                        next_date = next_date + timedelta(days=1)
+                    
+                    self.date_selector.set_date(next_date)
+                    date_str = next_date.strftime("%d-%m-%Y")
+                    set_last_date(date_str)
+                    self.current_date_generation_count = 0
+                    
+                    auto_toast = Adw.Toast.new(f"Fecha avanzada al {date_str}")
+                    self.toast_overlay.add_toast(auto_toast)
+                
+            # Preguntar si se eliminan las fotos
+            dialog = Adw.MessageDialog(
+                heading="Reporte Generado",
+                body="El reporte se generó correctamente. ¿Deseas eliminar las fotografías originales de tu computadora para no volver a usarlas?\n\n¡ATENCIÓN! Esta acción es irreversible y los archivos se borrarán permanentemente.",
+                transient_for=self.get_root()
+            )
+            dialog.add_response("cancel", "Conservar fotos")
+            dialog.add_response("delete", "Eliminar del disco")
+            dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+            
+            def on_delete_response(d, response):
+                d.close()
+                if response == "delete":
+                    for path in self.image_paths:
+                        try:
+                            if os.path.exists(path):
+                                os.remove(path)
+                        except Exception as e:
+                            print(f"Error borrando imagen {path}: {e}")
+                    # Al borrarlas físicamente, debemos quitarlas de la UI
+                    self._clear_all_images()
+                    
+            dialog.connect("response", on_delete_response)
+            dialog.present()
+
         elif isinstance(result, GenerateEvidenceError):
             self.show_alert(result.title, result.message)
             if callback:

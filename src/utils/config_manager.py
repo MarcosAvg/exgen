@@ -87,3 +87,31 @@ def set_last_evidence_image_dir(path):
     config = _load_config()
     config["last_evidence_image_dir"] = path
     _save_config(config)
+
+def get_last_date():
+    """Fecha utilizada en la última generación."""
+    config = _load_config()
+    return config.get("last_date")
+
+def set_last_date(date_str):
+    config = _load_config()
+    config["last_date"] = date_str
+    _save_config(config)
+
+def get_auto_date_enabled() -> bool:
+    config = _load_config()
+    return config.get("auto_date_enabled", False)
+
+def set_auto_date_enabled(enabled: bool):
+    config = _load_config()
+    config["auto_date_enabled"] = enabled
+    _save_config(config)
+
+def get_auto_date_limit() -> int:
+    config = _load_config()
+    return config.get("auto_date_limit", 2)
+
+def set_auto_date_limit(limit: int):
+    config = _load_config()
+    config["auto_date_limit"] = limit
+    _save_config(config)
